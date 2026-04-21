@@ -5,11 +5,11 @@
  */
 
 import {
-    PLAYER_W, PLAYER_H, MOVE_SPEED, JUMP_FORCE, COLORS, GAUGE_MAX,
+    PLAYER_W, PLAYER_H, MOVE_SPEED, JUMP_FORCE, ACCEL, FRICTION, COLORS, GAUGE_MAX,
     GAUGE_DRAIN_PER_WIND, WIND_HOLD_TIME,
     PLAYER_HITBOX_W, PLAYER_HITBOX_H,
     PLAYER_HITBOX_OFFSET_X, PLAYER_HITBOX_OFFSET_Y,
-    NEAR_MISS_DISTANCE,
+    NEAR_MISS_DISTANCE, COYOTE_TIME, JUMP_BUFFER,
 } from './constants.js';
 import { MIRA, MIRA_PALETTE } from './sprites.js';
 import { drawPixelSprite, drawPixelSpriteFlipped, drawPixelRect } from './draw.js';
@@ -34,6 +34,8 @@ export function createPlayer(spawnX, spawnY) {
         wasOnGround: true,
         onGround: false,
         ridingPlatform: null,
+        coyoteTimer: 0,
+        jumpBufferTimer: 0,
     };
 }
 
@@ -65,22 +67,55 @@ export function nearMissCheck(player, obstacles) {
 }
 
 export function updatePlayer(player, dt, allowJump) {
-    let dir = 0;
+    // 1. Horizontal Movement with Inertia
+    let inputDir = 0;
     if (!player.isWindingUp) {
-        if (isHeld('LEFT')) dir -= 1;
-        if (isHeld('RIGHT')) dir += 1;
+        if (isHeld('LEFT')) inputDir -= 1;
+        if (isHeld('RIGHT')) inputDir += 1;
     }
 
     const gaugeFactor = 0.45 + 0.55 * (player.gauge / player.gaugeMax);
-    player.vx = dir * MOVE_SPEED * gaugeFactor;
-    if (dir !== 0) player.facing = dir;
+    const targetVx = inputDir * MOVE_SPEED * gaugeFactor;
 
-    if (allowJump && !player.isWindingUp && (justPressed('SPACE') || justPressed('UP')) && player.onGround) {
-        player.vy = JUMP_FORCE;
-        player.onGround = false;
+    if (inputDir !== 0) {
+        // Accelerate
+        const accelAmount = inputDir * ACCEL * dt;
+        player.vx += accelAmount;
+        // Clamp to MOVE_SPEED
+        if (Math.abs(player.vx) > MOVE_SPEED * gaugeFactor) {
+            player.vx = inputDir * MOVE_SPEED * gaugeFactor;
+        }
+        player.facing = inputDir;
+    } else {
+        // Apply friction
+        const frictionAmount = FRICTION * dt;
+        if (player.vx > 0) player.vx = Math.max(0, player.vx - frictionAmount);
+        else if (player.vx < 0) player.vx = Math.min(0, player.vx + frictionAmount);
     }
 
-    if (dir === 0) {
+    // 2. Vertical Movement & Jumping Logic
+    // Coyote time
+    if (player.onGround) player.coyoteTimer = COYOTE_TIME;
+    else player.coyoteTimer = Math.max(0, player.coyoteTimer - dt);
+
+    // Jump buffering
+    if (justPressed('SPACE') || justPressed('UP')) player.jumpBufferTimer = JUMP_BUFFER;
+    else player.jumpBufferTimer = Math.max(0, player.jumpBufferTimer - dt);
+
+    if (allowJump && !player.isWindingUp && player.jumpBufferTimer > 0 && player.coyoteTimer > 0) {
+        player.vy = JUMP_FORCE;
+        player.onGround = false;
+        player.coyoteTimer = 0;
+        player.jumpBufferTimer = 0;
+    }
+
+    // Variable jump height (shorter hop if button let go early)
+    if (player.vy < 0 && !isHeld('SPACE') && !isHeld('UP')) {
+        player.vy *= 0.5; // Dampen upward velocity
+    }
+
+    // 3. Animation state
+    if (inputDir === 0 && Math.abs(player.vx) < 1) {
         if (player.anim !== 'idle') { player.anim = 'idle'; player.animFrame = 0; player.animTimer = 0; }
     } else {
         if (player.anim !== 'walk') { player.anim = 'walk'; player.animFrame = 0; player.animTimer = 0; }
@@ -88,7 +123,8 @@ export function updatePlayer(player, dt, allowJump) {
     if (player.isWindingUp) player.anim = 'windup';
 
     player.animTimer += dt;
-    const frameDur = player.anim === 'walk' ? 0.13 : 0.5;
+    const walkSpeed = Math.max(0.05, 0.13 * (MOVE_SPEED / Math.max(1, Math.abs(player.vx))));
+    const frameDur = player.anim === 'walk' ? walkSpeed : 0.5;
     if (player.animTimer >= frameDur) {
         player.animTimer -= frameDur;
         player.animFrame++;

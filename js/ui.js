@@ -41,7 +41,10 @@ export function drawHUD(ctx, game) {
     drawPixelRect(ctx, gx, gy, fillW, gh, color);
 
     if (game.gearTokens && game.gearTokens.length > 0) {
-        drawGearCounter(ctx, game.gearsCollected || 0, game.gearTokens.length);
+        // Use liar counter display instead of actual count
+        const displayCount = game.liarCounter ? game.liarCounter.getDisplayCount() : (game.gearsCollected || 0);
+        const totalGears = game.gearTokens.length + (game.trollTokens ? game.trollTokens.length : 0);
+        drawGearCounter(ctx, displayCount, totalGears);
     }
 
     if (game.message && game.messageTimer > 0) {

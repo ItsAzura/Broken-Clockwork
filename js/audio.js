@@ -91,6 +91,41 @@ export function playLand() {
     tone(180, 120, 0.06, 'square', 0.12);
 }
 
+export function playPistonClunk() {
+    tone(120, 80, 0.12, 'square', 0.15);
+}
+
+export function playTriggerActivate() {
+    tone(300, 200, 0.08, 'square', 0.12);
+}
+
+export function playFakeExitBuzz() {
+    tone(440, 220, 0.4, 'sawtooth', 0.18);
+    setTimeout(() => tone(220, 110, 0.3, 'sawtooth', 0.15), 200);
+}
+
+let humOsc = null;
+let humGain = null;
+
+function initHum() {
+    if (humOsc || !audioCtx) return;
+    humOsc = audioCtx.createOscillator();
+    humGain = audioCtx.createGain();
+    humOsc.type = 'sine';
+    humOsc.frequency.value = 150;
+    humGain.gain.value = 0;
+    humOsc.connect(humGain).connect(masterGain);
+    humOsc.start();
+}
+
+export function setHumVolume(volume) {
+    if (!audioCtx) return;
+    initHum();
+    if (humGain) {
+        humGain.gain.setTargetAtTime(volume * 0.1, audioCtx.currentTime, 0.05);
+    }
+}
+
 export function unlockNote(index) {
     if (index >= 0 && index < noteUnlocks.length) noteUnlocks[index] = true;
 }
@@ -103,7 +138,7 @@ export function unlockAllNotes() {
     for (let i = 0; i < noteUnlocks.length; i++) noteUnlocks[i] = true;
 }
 
-function playMusicNote() {
+export function playMusicNote() {
     if (!musicEnabled || !audioCtx) return;
     const f = NOTE_FREQS[musicStep];
     if (noteUnlocks[musicStep]) {
@@ -122,4 +157,5 @@ export function startMusic() {
 export function stopMusic() {
     musicEnabled = false;
     if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
+    if (humGain) humGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.1);
 }

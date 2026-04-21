@@ -13,9 +13,13 @@ export const TARGET_FPS = 60;
 export const DT_CAP = 0.05;
 
 export const GRAVITY = 400;
-export const MOVE_SPEED = 80;
-export const JUMP_FORCE = -200;
+export const MOVE_SPEED = 90; // Slightly increased for better feel
+export const ACCEL = 600;
+export const FRICTION = 500;
+export const JUMP_FORCE = -190; // Slightly adjusted for better control
 export const FAN_FORCE = -260;
+export const COYOTE_TIME = 0.12;
+export const JUMP_BUFFER = 0.12;
 
 export const PLAYER_W = 8;
 export const PLAYER_H = 12;
@@ -102,6 +106,24 @@ export const AUTO = Object.freeze({
     ORBIT_SPHERE:  'ORBIT_SPHERE',
 });
 
+export const TRAP = Object.freeze({
+    TRIGGER_TILE:         'TRIGGER_TILE',
+    FAKE_SAFE_ZONE:       'FAKE_SAFE_ZONE',
+    TROLL_TOKEN:          'TROLL_TOKEN',
+    HIDDEN_KILL_GEAR:     'HIDDEN_KILL_GEAR',
+    BAIT_PATH:            'BAIT_PATH',
+    ONE_FRAME_WINDOW:     'ONE_FRAME_WINDOW',
+    PHASE_SHIFT_OBSTACLE: 'PHASE_SHIFT_OBSTACLE',
+    ALMOST_MOMENT:        'ALMOST_MOMENT',
+    MIRROR_CORRIDOR:      'MIRROR_CORRIDOR',
+});
+
+export const TROLL_TOKEN_SUBTYPE = Object.freeze({
+    ONE_WAY_PRISON: 'ONE_WAY_PRISON',
+    RUSH_BAIT:      'RUSH_BAIT',
+    WIND_TRAP:      'WIND_TRAP',
+});
+
 export const TAUNT_MESSAGES = [
     "A CLOCKWORK DOLL... BROKEN.",
     "TRY AGAIN. OR DON'T.",
@@ -118,3 +140,42 @@ export const TAUNT_MESSAGES = [
     "THE GEARS REMEMBER EVERY MISTAKE.",
     "AT LEAST YOU'RE CONSISTENT.",
 ];
+
+export const TRAP_TAUNTS = {
+    fake_safe_zone: [
+        "THAT WASN'T SAFE.",
+        "NOWHERE IS SAFE.",
+        "YOU THOUGHT YOU WERE CLEVER.",
+        "THE SAFE ZONE LIED."
+    ],
+    troll_token: [
+        "GREED KILLS.",
+        "SHOULD'VE LEFT IT.",
+        "THE GEAR WANTED YOU DEAD.",
+        "THAT WAS A TRAP. OBVIOUSLY."
+    ],
+    hidden_gear: [
+        "THAT ONE WAS REAL.",
+        "NOT ALL GEARS ARE DECORATIVE.",
+        "YOU HEARD THE HUM.",
+        "TRUST NOTHING."
+    ],
+    bait_path: [
+        "THE EASY PATH IS NEVER EASY.",
+        "WIDE ROADS, NARROW CHANCES.",
+        "YOU CHOSE POORLY.",
+        "SHORTCUTS ARE TRAPS."
+    ],
+    almost_moment: [
+        "SO CLOSE.",
+        "VICTORY WAS RIGHT THERE.",
+        "THE MACHINE LAUGHS.",
+        "ALMOST DOESN'T COUNT."
+    ],
+    trigger_tile: [
+        "YOU TRIGGERED IT.",
+        "WATCH YOUR STEP.",
+        "THE FLOOR BETRAYED YOU.",
+        "INVISIBLE DOESN'T MEAN SAFE."
+    ]
+};

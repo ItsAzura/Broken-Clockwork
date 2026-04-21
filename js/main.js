@@ -19,8 +19,9 @@ import {
     initAudio, resumeAudio, playWindUp, playFreeze, playGaugeLow,
     playRefill, playLevelClear, playGameOver, playJump, playTick,
     startMusic, stopMusic, unlockNote, resetNotes, unlockAllNotes,
+    setHumVolume,
 } from './audio.js';
-import { LEVELS, getLevel } from './levels.js';
+import { LEVELS, getLevel, validateLevelTraps } from './levels.js';
 import { WindableObject } from './WindableObject.js';
 import { AutonomousObstacle, rectOverlapsBounds } from './AutonomousObstacle.js';
 import {
@@ -41,6 +42,8 @@ import {
     triggerDeath, updateDeathState, drawDeathFlash, drawTauntMessage,
     getDeathCount, getLevelDeathCount, isDying, isFreezing,
 } from './deathSystem.js';
+import { TriggerTile, FakeSafeZone, TrollToken, HiddenKillGear, BaitPath, OneFrameWindow, PhaseShiftObstacle, AlmostMomentTrap, MirrorCorridor, ProximityTrigger } from './trapSystem.js';
+import { LiarCounter } from './liarCounter.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -87,19 +90,180 @@ const game = {
     obstacleSpeedMult: 1,
     lastSpawn: { x: 0, y: 0 },
     deathCount: 0,
+    triggerTiles: [],
+    fakeSafeZones: [],
+    trollTokens: [],
+    hiddenKillGears: [],
+    almostMomentTrap: null,
+    proximityTriggers: [],
+    liarCounter: new LiarCounter(),
 };
 
 function loadLevel(idx) {
     const data = getLevel(idx - 1);
     game.levelData = data;
+    
+    // Validate level trap configuration
+    const validation = validateLevelTraps(data);
+    if (!validation.valid) {
+        console.warn(`Level ${data.id} trap validation warnings:`);
+        validation.warnings.forEach(warning => console.warn(`  - ${warning}`));
+    }
+    
     game.tiles = data.tilemap.slice();
 
-    game.objects = (data.objects || []).map(o => new WindableObject(o));
-    game.autonomousObstacles = (data.autonomousObstacles || []).map(a => new AutonomousObstacle(a));
+    try {
+        game.objects = (data.objects || []).map(o => new WindableObject(o));
+    } catch (e) {
+        console.error('Error loading objects:', e);
+        game.objects = [];
+    }
+    
+    // Create obstacles, using PhaseShiftObstacle for obstacles in phaseShiftObstacles array
+    try {
+        const phaseShiftIds = data.phaseShiftObstacles || [];
+        game.autonomousObstacles = (data.autonomousObstacles || []).map(a => {
+            if (!a.id) {
+                console.warn('Obstacle missing id, skipping phase shift check');
+            }
+            if (phaseShiftIds.includes(a.id)) {
+                return new PhaseShiftObstacle(a);
+            }
+            return new AutonomousObstacle(a);
+        });
+    } catch (e) {
+        console.error('Error loading obstacles:', e);
+        game.autonomousObstacles = [];
+    }
+    
     game.gearTokens = (data.gearTokens || []).map(t => ({
         x: t.x, y: t.y, collected: false, angle: 0,
     }));
     game.gearsCollected = 0;
+    if (game.liarCounter) game.liarCounter.reset();
+    
+    // Initialize trap systems with error handling
+    try {
+        game.triggerTiles = (data.triggerTiles || []).map(t => {
+            if (!t.targetObstacleId) {
+                console.warn('TriggerTile missing targetObstacleId:', t);
+            }
+            return new TriggerTile(t);
+        });
+    } catch (e) {
+        console.error('Error loading trigger tiles:', e);
+        game.triggerTiles = [];
+    }
+    
+    try {
+        game.fakeSafeZones = (data.fakeSafeZones || []).map(z => {
+            if (!z.obstacleIds || z.obstacleIds.length === 0) {
+                console.warn('FakeSafeZone missing obstacleIds:', z);
+            }
+            return new FakeSafeZone(z);
+        });
+    } catch (e) {
+        console.error('Error loading fake safe zones:', e);
+        game.fakeSafeZones = [];
+    }
+    
+    try {
+        game.trollTokens = (data.trollTokens || []).map(t => {
+            if (!t.subtype) {
+                console.warn('TrollToken missing subtype:', t);
+            }
+            return new TrollToken(t);
+        });
+    } catch (e) {
+        console.error('Error loading troll tokens:', e);
+        game.trollTokens = [];
+    }
+    
+    try {
+        game.hiddenKillGears = (data.hiddenKillGears || []).map(g => new HiddenKillGear(g));
+    } catch (e) {
+        console.error('Error loading hidden kill gears:', e);
+        game.hiddenKillGears = [];
+    }
+    
+    try {
+        game.baitPaths = (data.baitPaths || []).map(b => new BaitPath(b));
+    } catch (e) {
+        console.error('Error loading bait paths:', e);
+        game.baitPaths = [];
+    }
+    
+    try {
+        game.oneFrameWindows = (data.oneFrameWindows || []).map(w => new OneFrameWindow(w));
+    } catch (e) {
+        console.error('Error loading one frame windows:', e);
+        game.oneFrameWindows = [];
+    }
+    
+    try {
+        game.proximityTriggers = (data.proximityTriggers || []).map(p => new ProximityTrigger(p));
+    } catch (e) {
+        console.error('Error loading proximity triggers:', e);
+        game.proximityTriggers = [];
+    }
+    
+    try {
+        game.almostMomentTrap = data.almostMomentTrap ? new AlmostMomentTrap(data.almostMomentTrap) : null;
+        if (game.almostMomentTrap && (!game.almostMomentTrap.obstacleIds || game.almostMomentTrap.obstacleIds.length === 0)) {
+            console.warn('AlmostMomentTrap missing obstacleIds');
+        }
+    } catch (e) {
+        console.error('Error loading almost moment trap:', e);
+        game.almostMomentTrap = null;
+    }
+    
+    // Create mirror corridors and apply symmetry + phase offset to obstacles
+    try {
+        game.mirrorCorridors = (data.mirrorCorridors || []).map(config => {
+            const corridor = new MirrorCorridor(config);
+            const { obstacleA, obstacleB } = corridor.createObstacles();
+            
+            // Find and update obstacles in the autonomousObstacles array
+            if (obstacleA.id) {
+                const obsA = game.autonomousObstacles.find(o => o.id === obstacleA.id);
+                if (obsA && obstacleA.initialTime !== undefined) {
+                    obsA.time = obstacleA.initialTime;
+                } else if (obstacleA.id && !obsA) {
+                    console.warn('MirrorCorridor references non-existent obstacle:', obstacleA.id);
+                }
+            }
+            
+            if (obstacleB.id) {
+                const obsB = game.autonomousObstacles.find(o => o.id === obstacleB.id);
+                if (obsB) {
+                    // Apply symmetry and phase offset
+                    Object.assign(obsB, obstacleB);
+                    if (obstacleB.initialTime !== undefined) {
+                        obsB.time = obstacleB.initialTime;
+                    }
+                } else {
+                    console.warn('MirrorCorridor references non-existent obstacle:', obstacleB.id);
+                }
+            }
+            
+            return corridor;
+        });
+    } catch (e) {
+        console.error('Error loading mirror corridors:', e);
+        game.mirrorCorridors = [];
+    }
+
+    // Synchronize obstacles for one frame windows
+    try {
+        for (const window of game.oneFrameWindows) {
+            const success = window.synchronizeObstacles(game.autonomousObstacles);
+            if (!success) {
+                console.warn('Failed to synchronize OneFrameWindow obstacles');
+            }
+        }
+    } catch (e) {
+        console.error('Error synchronizing one frame windows:', e);
+    }
 
     game.particles.length = 0;
     game.sequenceProgress = [];
@@ -132,13 +296,132 @@ function softRespawn() {
     for (let ty = 0; ty < game.levelData.tilemap.length; ty++) {
         game.tiles[ty] = game.levelData.tilemap[ty].replace('P', '.');
     }
-    game.objects = (game.levelData.objects || []).map(o => new WindableObject(o));
-    game.autonomousObstacles = (game.levelData.autonomousObstacles || [])
-        .map(a => new AutonomousObstacle(a));
+    
+    try {
+        game.objects = (game.levelData.objects || []).map(o => new WindableObject(o));
+    } catch (e) {
+        console.error('Error respawning objects:', e);
+        game.objects = [];
+    }
+    
+    // Create obstacles, using PhaseShiftObstacle for obstacles in phaseShiftObstacles array
+    try {
+        const phaseShiftIds = game.levelData.phaseShiftObstacles || [];
+        game.autonomousObstacles = (game.levelData.autonomousObstacles || [])
+            .map(a => {
+                if (phaseShiftIds.includes(a.id)) {
+                    return new PhaseShiftObstacle(a);
+                }
+                return new AutonomousObstacle(a);
+            });
+    } catch (e) {
+        console.error('Error respawning obstacles:', e);
+        game.autonomousObstacles = [];
+    }
+    
     game.gearTokens = (game.levelData.gearTokens || []).map(t => ({
         x: t.x, y: t.y, collected: false, angle: 0,
     }));
     game.gearsCollected = 0;
+    if (game.liarCounter) game.liarCounter.reset();
+    
+    try {
+        game.triggerTiles = (game.levelData.triggerTiles || []).map(t => new TriggerTile(t));
+    } catch (e) {
+        console.error('Error respawning trigger tiles:', e);
+        game.triggerTiles = [];
+    }
+    
+    try {
+        game.fakeSafeZones = (game.levelData.fakeSafeZones || []).map(z => new FakeSafeZone(z));
+    } catch (e) {
+        console.error('Error respawning fake safe zones:', e);
+        game.fakeSafeZones = [];
+    }
+    
+    try {
+        game.trollTokens = (game.levelData.trollTokens || []).map(t => new TrollToken(t));
+    } catch (e) {
+        console.error('Error respawning troll tokens:', e);
+        game.trollTokens = [];
+    }
+    
+    try {
+        game.hiddenKillGears = (game.levelData.hiddenKillGears || []).map(g => new HiddenKillGear(g));
+    } catch (e) {
+        console.error('Error respawning hidden kill gears:', e);
+        game.hiddenKillGears = [];
+    }
+    
+    try {
+        game.baitPaths = (game.levelData.baitPaths || []).map(b => new BaitPath(b));
+    } catch (e) {
+        console.error('Error respawning bait paths:', e);
+        game.baitPaths = [];
+    }
+    
+    try {
+        game.oneFrameWindows = (game.levelData.oneFrameWindows || []).map(w => new OneFrameWindow(w));
+    } catch (e) {
+        console.error('Error respawning one frame windows:', e);
+        game.oneFrameWindows = [];
+    }
+    
+    try {
+        game.proximityTriggers = (game.levelData.proximityTriggers || []).map(p => new ProximityTrigger(p));
+    } catch (e) {
+        console.error('Error respawning proximity triggers:', e);
+        game.proximityTriggers = [];
+    }
+    
+    try {
+        game.almostMomentTrap = game.levelData.almostMomentTrap ? new AlmostMomentTrap(game.levelData.almostMomentTrap) : null;
+    } catch (e) {
+        console.error('Error respawning almost moment trap:', e);
+        game.almostMomentTrap = null;
+    }
+    
+    // Create mirror corridors and apply symmetry + phase offset to obstacles
+    try {
+        game.mirrorCorridors = (game.levelData.mirrorCorridors || []).map(config => {
+            const corridor = new MirrorCorridor(config);
+            const { obstacleA, obstacleB } = corridor.createObstacles();
+            
+            // Find and update obstacles in the autonomousObstacles array
+            if (obstacleA.id) {
+                const obsA = game.autonomousObstacles.find(o => o.id === obstacleA.id);
+                if (obsA && obstacleA.initialTime !== undefined) {
+                    obsA.time = obstacleA.initialTime;
+                }
+            }
+            
+            if (obstacleB.id) {
+                const obsB = game.autonomousObstacles.find(o => o.id === obstacleB.id);
+                if (obsB) {
+                    // Apply symmetry and phase offset
+                    Object.assign(obsB, obstacleB);
+                    if (obstacleB.initialTime !== undefined) {
+                        obsB.time = obstacleB.initialTime;
+                    }
+                }
+            }
+            
+            return corridor;
+        });
+    } catch (e) {
+        console.error('Error respawning mirror corridors:', e);
+        game.mirrorCorridors = [];
+    }
+    
+    // Synchronize obstacles for one frame windows
+    try {
+        for (const window of game.oneFrameWindows) {
+            window.synchronizeObstacles(game.autonomousObstacles);
+        }
+    } catch (e) {
+        console.error('Error synchronizing one frame windows on respawn:', e);
+    }
+    
     game.sequenceProgress = [];
     game.sequenceComplete = false;
     game.obstaclePauseTimer = 0;
@@ -147,6 +430,25 @@ function softRespawn() {
     game.particles.length = 0;
     markRespawnNow(game.gameTime);
     updateCamera(true);
+    
+    // Reset phase shift obstacles to base speed
+    resetPhaseShiftObstacles();
+}
+
+function resetPhaseShiftObstacles() {
+    for (const obstacle of game.autonomousObstacles) {
+        if (obstacle instanceof PhaseShiftObstacle) {
+            obstacle.reset();
+        }
+    }
+}
+
+function updatePhaseShiftObstacles(deathCount) {
+    for (const obstacle of game.autonomousObstacles) {
+        if (obstacle instanceof PhaseShiftObstacle) {
+            obstacle.updatePhaseShift(deathCount);
+        }
+    }
 }
 
 function startTransition(dir, cb) {
@@ -244,7 +546,9 @@ function dieNow(context) {
     if (!ctxInfo.hadAllTokens && game.gearsCollected === game.gearTokens.length - 1 && game.gearTokens.length > 0) {
         ctxInfo.lastToken = true;
     }
-    triggerDeath(game.player, game.particles, ctxInfo, game.gameTime);
+    // Extract killSource from context if present
+    const killSource = ctxInfo.killSource || null;
+    triggerDeath(game.player, game.particles, ctxInfo, game.gameTime, killSource);
     playGameOver();
     game.shake = 10;
     game.flash = 0;
@@ -252,6 +556,8 @@ function dieNow(context) {
 
 function collectTokens() {
     const hit = getPlayerHitbox(game.player);
+    
+    // Collect regular gear tokens
     for (const t of game.gearTokens) {
         if (t.collected) continue;
         const tb = { x: t.x + 1, y: t.y + 1, w: 6, h: 6 };
@@ -259,19 +565,123 @@ function collectTokens() {
             hit.y < tb.y + tb.h && hit.y + hit.h > tb.y) {
             t.collected = true;
             game.gearsCollected++;
+            // Update liar counter with actual count (no lie for regular tokens)
+            game.liarCounter.setActualCount(game.gearsCollected);
             playTick();
             playWindUp(2.2);
             spawnSparks(game.particles, t.x + 4, t.y + 4, 8,
                 [COLORS.SPARK_1, COLORS.GLOW_WARM, COLORS.METAL_LIGHT]);
             unlockNote(game.gearsCollected % 8);
 
-            if (game.gearsCollected === game.gearTokens.length) {
+            if (game.gearsCollected === game.gearTokens.length + game.trollTokens.length) {
                 game.obstaclePauseTimer = 1.0;
                 game.flash = 0.4;
                 game.shake = 6;
                 showMessage('ALL GEARS!', 1.2);
             }
         }
+    }
+    
+    // Collect troll tokens
+    for (const trollToken of game.trollTokens) {
+        if (trollToken.collected) continue;
+        
+        if (trollToken.checkCollision(hit)) {
+            const trapResult = trollToken.onCollect(game);
+            game.gearsCollected++;
+            // Trigger liar counter for troll tokens
+            game.liarCounter.onTrollTokenCollect(game.gearsCollected);
+            playTick();
+            playWindUp(2.2);
+            spawnSparks(game.particles, trollToken.x + 4, trollToken.y + 4, 8,
+                [COLORS.SPARK_1, COLORS.GLOW_WARM, COLORS.METAL_LIGHT]);
+            unlockNote(game.gearsCollected % 8);
+            
+            // Handle trap activation based on subtype
+            if (trapResult) {
+                handleTrollTokenTrap(trapResult);
+            }
+
+            if (game.gearsCollected === game.gearTokens.length + game.trollTokens.length) {
+                game.obstaclePauseTimer = 1.0;
+                game.flash = 0.4;
+                game.shake = 6;
+                showMessage('ALL GEARS!', 1.2);
+            }
+        }
+    }
+    
+    // Check almost moment trap after token collection
+    if (game.almostMomentTrap && !game.almostMomentTrap.activated) {
+        const totalGears = game.gearTokens.length + game.trollTokens.length;
+        if (game.almostMomentTrap.checkTrigger(game.gearsCollected, totalGears)) {
+            game.almostMomentTrap.activate(game);
+        }
+    }
+}
+
+function handleTrollTokenTrap(trapResult) {
+    try {
+        switch (trapResult.type) {
+            case 'ONE_WAY_PRISON':
+                // Activate obstacles that block the return path
+                for (const obstacleId of trapResult.obstacleIds) {
+                    const obstacle = game.autonomousObstacles.find(a => a.id === obstacleId);
+                    if (obstacle) {
+                        // Set activation source for killSource tracking
+                        obstacle.activationSource = 'troll_token';
+                        if (obstacle.activate) {
+                            obstacle.activate();
+                        }
+                    } else {
+                        console.warn('TrollToken references non-existent obstacle:', obstacleId);
+                    }
+                }
+                game.flash = 0.3;
+                game.shake = 8;
+                break;
+            
+            case 'RUSH_BAIT':
+                // Increase obstacle speed in the area
+                for (const obstacleId of trapResult.affectedObstacleIds) {
+                    const obstacle = game.autonomousObstacles.find(a => a.id === obstacleId);
+                    if (obstacle) {
+                        // Set activation source for killSource tracking
+                        obstacle.activationSource = 'troll_token';
+                        obstacle.speedMult = (obstacle.speedMult || 1) * trapResult.speedMultiplier;
+                    } else {
+                        console.warn('TrollToken RUSH_BAIT references non-existent obstacle:', obstacleId);
+                    }
+                }
+                game.flash = 0.3;
+                game.shake = 8;
+                break;
+            
+            case 'WIND_TRAP':
+                // Spawn obstacles near the player
+                for (const spawnConfig of trapResult.spawnConfigs) {
+                    const spawnX = game.player.x + spawnConfig.offsetX;
+                    const spawnY = game.player.y + spawnConfig.offsetY;
+                    
+                    // Create new obstacle based on spawn config
+                    const newObstacle = new AutonomousObstacle({
+                        type: spawnConfig.type,
+                        x: spawnX,
+                        y: spawnY,
+                        ...spawnConfig,
+                    });
+                    
+                    // Set activation source for killSource tracking
+                    newObstacle.activationSource = 'troll_token';
+                    
+                    game.autonomousObstacles.push(newObstacle);
+                }
+                game.flash = 0.3;
+                game.shake = 8;
+                break;
+        }
+    } catch (e) {
+        console.error('Error handling troll token trap:', e);
     }
 }
 
@@ -301,7 +711,9 @@ function checkLethalCollisions() {
     for (const a of game.autonomousObstacles) {
         const b = a.getBounds();
         if (rectOverlapsBounds(hit, b)) {
-            dieNow({});
+            // Check if obstacle has a trap activation source for killSource tracking
+            const killSource = a.activationSource || null;
+            dieNow({ killSource });
             return true;
         }
     }
@@ -317,6 +729,14 @@ function checkLethalCollisions() {
         }
     }
 
+    // Check hidden kill gear collisions
+    for (const gear of game.hiddenKillGears) {
+        if (gear.checkCollision(hit)) {
+            dieNow({ killSource: 'hidden_gear' });
+            return true;
+        }
+    }
+
     return false;
 }
 
@@ -327,6 +747,22 @@ function handleNearMisses() {
         spawnSparks(game.particles, game.player.x + 4, game.player.y + 6, 2,
             [COLORS.SPARK_1, COLORS.GLOW_WARM]);
     }
+}
+
+function handleHiddenGearProximity() {
+    const playerPos = { x: game.player.x, y: game.player.y };
+    let maxVolume = 0;
+    
+    // Find the loudest hum from all hidden kill gears
+    for (const gear of game.hiddenKillGears) {
+        const volume = gear.getHumVolume(playerPos);
+        if (volume > maxVolume) {
+            maxVolume = volume;
+        }
+    }
+    
+    // Set hum volume smoothly
+    setHumVolume(maxVolume);
 }
 
 function update(dt) {
@@ -359,12 +795,15 @@ function update(dt) {
 
     if (game.state === STATES.PLAYING) {
         if (justPressed('PAUSE')) { game.state = STATES.PAUSED; return; }
+        if (justPressed('SKIP')) { levelClear(); return; }
 
         const ds = updateDeathState(dt);
         if (ds === 'freeze') { clearPressed(); return; }
         if (ds === 'respawn') {
             softRespawn();
-            game.deathCount = getDeathCount();
+            const newDeathCount = getDeathCount();
+            game.deathCount = newDeathCount;
+            updatePhaseShiftObstacles(newDeathCount);
             clearPressed();
             return;
         }
@@ -373,8 +812,76 @@ function update(dt) {
         updateObstaclePause(dt);
         for (const a of game.autonomousObstacles) a.update(dt);
 
+        // Update liar counter
+        try {
+            game.liarCounter.update(dt);
+        } catch (e) {
+            console.error('Error updating liar counter:', e);
+        }
+
+        // Update fake safe zones
+        try {
+            const playerPos = { x: game.player.x, y: game.player.y };
+            for (const zone of game.fakeSafeZones) {
+                const shouldActivate = zone.update(dt, playerPos);
+                if (shouldActivate) {
+                    // Activate obstacles associated with this zone
+                    for (const obstacleId of zone.obstacleIds) {
+                        const obstacle = game.autonomousObstacles.find(a => a.id === obstacleId);
+                        if (obstacle) {
+                            // Set activation source for killSource tracking
+                            obstacle.activationSource = 'fake_safe_zone';
+                            if (obstacle.activate) {
+                                obstacle.activate();
+                            }
+                        } else {
+                            console.warn('FakeSafeZone references non-existent obstacle:', obstacleId);
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Error updating fake safe zones:', e);
+        }
+
+        // Update proximity triggers
+        try {
+            const playerPos = { x: game.player.x, y: game.player.y };
+            for (const trigger of game.proximityTriggers) {
+                const justActivated = trigger.update(dt, playerPos);
+                if (justActivated) {
+                    // Find and activate the target trap
+                    // This could be a hidden kill gear, fake safe zone, or other trap
+                    // For now, we'll handle it generically by looking for the targetTrapId
+                    // in various trap arrays
+                    
+                    // Check if it's a hidden kill gear
+                    const hiddenGear = game.hiddenKillGears.find(g => g.id === trigger.targetTrapId);
+                    if (hiddenGear) {
+                        // Proximity trigger for hidden gear could increase hum volume or other effects
+                        // For now, the proximity is handled by handleHiddenGearProximity
+                    }
+                    
+                    // Check if it's an obstacle
+                    const obstacle = game.autonomousObstacles.find(a => a.id === trigger.targetTrapId);
+                    if (obstacle) {
+                        obstacle.activationSource = 'proximity_trigger';
+                        if (obstacle.activate) {
+                            obstacle.activate();
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Error updating proximity triggers:', e);
+        }
+
         for (const t of game.gearTokens) {
             if (!t.collected) t.angle += (6 * Math.PI / 180);
+        }
+        
+        for (const trollToken of game.trollTokens) {
+            if (!trollToken.collected) trollToken.angle += (6 * Math.PI / 180);
         }
 
         const allowJump = true;
@@ -412,6 +919,31 @@ function update(dt) {
         game.player.ridingPlatform = null;
         updatePlayerPhysics(game.player, dt, game.tiles, game.objects);
 
+        // Check trigger tile collisions
+        try {
+            const playerHitbox = getPlayerHitbox(game.player);
+            for (const trigger of game.triggerTiles) {
+                if (trigger.checkCollision(playerHitbox)) {
+                    if (!trigger.activated || !trigger.oneShot) {
+                        trigger.activate(game);
+                        // Find and activate the target obstacle by targetObstacleId
+                        const obstacle = game.autonomousObstacles.find(a => a.id === trigger.targetObstacleId);
+                        if (obstacle) {
+                            // Set activation source for killSource tracking
+                            obstacle.activationSource = 'trigger_tile';
+                            if (obstacle.activate) {
+                                obstacle.activate();
+                            }
+                        } else {
+                            console.warn('TriggerTile references non-existent obstacle:', trigger.targetObstacleId);
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Error checking trigger tile collisions:', e);
+        }
+
         if (checkLethalCollisions()) { clearPressed(); return; }
 
         if (game.player.gauge <= 0) {
@@ -427,9 +959,15 @@ function update(dt) {
 
         collectTokens();
         handleNearMisses();
+        
+        try {
+            handleHiddenGearProximity();
+        } catch (e) {
+            console.error('Error handling hidden gear proximity:', e);
+        }
 
         const gate = game.levelData.goalTrigger;
-        const allGears = game.gearsCollected === game.gearTokens.length;
+        const allGears = game.gearsCollected === game.gearTokens.length + game.trollTokens.length;
         if (gate) {
             const p = { x: game.player.x, y: game.player.y, w: PLAYER_W, h: PLAYER_H };
             const over = p.x < gate.x + gate.w && p.x + p.w > gate.x &&
@@ -556,6 +1094,14 @@ function drawWorld() {
     for (const o of game.objects) o.draw(ctx, camX, camY, game.tick);
 
     for (const t of game.gearTokens) drawGearToken(ctx, t, camX, camY, game.tick);
+    
+    // Draw troll tokens (they look identical to regular tokens)
+    for (const trollToken of game.trollTokens) {
+        if (!trollToken.collected) {
+            const tokenData = { x: trollToken.x, y: trollToken.y, angle: trollToken.angle, collected: false };
+            drawGearToken(ctx, tokenData, camX, camY, game.tick);
+        }
+    }
 
     if (!isDying() || isFreezing()) drawPlayer(ctx, game.player, camX, camY);
 

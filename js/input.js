@@ -19,6 +19,7 @@ const KEY_ALIASES = {
     'e': 'WIND', 'E': 'WIND',
     'r': 'RETRY', 'R': 'RETRY',
     'p': 'PAUSE', 'P': 'PAUSE',
+    'l': 'SKIP', 'L': 'SKIP',
     'Escape': 'PAUSE',
     'Enter': 'SPACE',
 };

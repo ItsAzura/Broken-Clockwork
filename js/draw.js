@@ -23,63 +23,122 @@ export function drawPixelBorder(ctx, x, y, w, h, colorLight, colorDark, fill = n
     ctx.fillRect(x + w - thickness, y, thickness, h);
 }
 
-export function drawPixelText(ctx, text, x, y, color, scale = 1) {
-    if (text == null) return;
-    text = String(text).toUpperCase();
-    ctx.fillStyle = color;
-    let cx = x | 0;
-    const cy = y | 0;
-    for (let i = 0; i < text.length; i++) {
-        const ch = text[i];
-        const glyph = getGlyph(ch);
-        for (let row = 0; row < FONT_H; row++) {
-            const line = glyph[row];
-            if (!line) continue;
-            for (let col = 0; col < FONT_W; col++) {
-                if (line[col] === '#') {
-                    ctx.fillRect(cx + col * scale, cy + row * scale, scale, scale);
-                }
-            }
-        }
-        cx += (FONT_W + 1) * scale;
-    }
-}
+const fontCache = new Map();
+const spriteCache = new Map();
 
-export function measurePixelText(text, scale = 1) {
-    return text.length * (FONT_W + 1) * scale - scale;
-}
-
-export function drawPixelSprite(ctx, spriteData, x, y, palette, scale = 1) {
-    if (!spriteData) return;
-    x = x | 0; y = y | 0;
-    for (let row = 0; row < spriteData.length; row++) {
+function getCachedSprite(spriteData, palette) {
+    // Generate a unique key for this sprite + palette combination
+    const key = JSON.stringify(spriteData) + JSON.stringify(palette);
+    if (spriteCache.has(key)) return spriteCache.get(key);
+    
+    const h = spriteData.length;
+    const w = spriteData[0].length;
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    
+    for (let row = 0; row < h; row++) {
         const line = spriteData[row];
-        for (let col = 0; col < line.length; col++) {
-            const idx = line[col];
-            if (idx === 0) continue;
-            const color = palette[idx];
-            if (!color) continue;
-            ctx.fillStyle = color;
-            ctx.fillRect(x + col * scale, y + row * scale, scale, scale);
-        }
-    }
-}
-
-export function drawPixelSpriteFlipped(ctx, spriteData, x, y, palette, scale = 1) {
-    if (!spriteData) return;
-    x = x | 0; y = y | 0;
-    for (let row = 0; row < spriteData.length; row++) {
-        const line = spriteData[row];
-        const w = line.length;
         for (let col = 0; col < w; col++) {
             const idx = line[col];
             if (idx === 0) continue;
             const color = palette[idx];
             if (!color) continue;
             ctx.fillStyle = color;
-            ctx.fillRect(x + (w - 1 - col) * scale, y + row * scale, scale, scale);
+            ctx.fillRect(col, row, 1, 1);
         }
     }
+    
+    spriteCache.set(key, canvas);
+    return canvas;
+}
+
+function getCachedFont(color) {
+    if (fontCache.has(color)) return fontCache.get(color);
+    
+    // Create an offscreen canvas for this color's font
+    const canvas = document.createElement('canvas');
+    const charCount = Object.keys(FONT).length + 1; // +1 for fallback
+    canvas.width = (FONT_W + 1) * charCount;
+    canvas.height = FONT_H;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = color;
+    
+    const chars = Object.keys(FONT);
+    const map = new Map();
+    
+    let x = 0;
+    // Draw all font characters
+    for (const char of chars) {
+        const glyph = FONT[char];
+        for (let row = 0; row < FONT_H; row++) {
+            const line = glyph[row];
+            for (let col = 0; col < FONT_W; col++) {
+                if (line[col] === '#') {
+                    ctx.fillRect(x + col, row, 1, 1);
+                }
+            }
+        }
+        map.set(char, x);
+        x += FONT_W + 1;
+    }
+    
+    // Fallback glyph
+    for (let row = 0; row < FONT_H; row++) {
+        const line = FALLBACK[row];
+        for (let col = 0; col < FONT_W; col++) {
+            if (line[col] === '#') ctx.fillRect(x + col, row, 1, 1);
+        }
+    }
+    map.set('FALLBACK', x);
+    
+    const result = { canvas, map };
+    fontCache.set(color, result);
+    return result;
+}
+
+export function drawPixelText(ctx, text, x, y, color, scale = 1) {
+    if (text == null) return;
+    text = String(text).toUpperCase();
+    const cache = getCachedFont(color);
+    
+    let cx = x | 0;
+    const cy = y | 0;
+    const s = scale;
+    
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        let srcX = cache.map.get(ch);
+        if (srcX === undefined) srcX = cache.map.get('FALLBACK');
+        
+        ctx.drawImage(cache.canvas, srcX, 0, FONT_W, FONT_H, cx, cy, FONT_W * s, FONT_H * s);
+        cx += (FONT_W + 1) * s;
+    }
+}
+
+export function measurePixelText(text, scale = 1) {
+    if (text == null) return 0;
+    return text.length * (FONT_W + 1) * scale - scale;
+}
+
+export function drawPixelSprite(ctx, spriteData, x, y, palette, scale = 1) {
+    if (!spriteData) return;
+    const canvas = getCachedSprite(spriteData, palette);
+    const w = canvas.width, h = canvas.height;
+    ctx.drawImage(canvas, 0, 0, w, h, x | 0, y | 0, w * scale, h * scale);
+}
+
+export function drawPixelSpriteFlipped(ctx, spriteData, x, y, palette, scale = 1) {
+    if (!spriteData) return;
+    const canvas = getCachedSprite(spriteData, palette);
+    const w = canvas.width, h = canvas.height;
+    
+    ctx.save();
+    ctx.translate((x | 0) + w * scale, y | 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(canvas, 0, 0, w, h, 0, 0, w * scale, h * scale);
+    ctx.restore();
 }
 
 export function drawCircleTimer(ctx, cx, cy, radius, progress, color) {
