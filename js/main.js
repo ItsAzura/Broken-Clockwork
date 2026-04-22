@@ -45,6 +45,12 @@ import {
 import { TriggerTile, FakeSafeZone, TrollToken, HiddenKillGear, BaitPath, OneFrameWindow, PhaseShiftObstacle, AlmostMomentTrap, MirrorCorridor, ProximityTrigger } from './trapSystem.js';
 import { LiarCounter } from './liarCounter.js';
 
+// Initialize Wavedash SDK to signal load completion
+// WavedashJS is injected by the platform — guard for local dev
+if (typeof window.WavedashJS !== 'undefined') {
+    window.WavedashJS.init({ debug: false });
+}
+
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 

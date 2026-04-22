@@ -85,8 +85,9 @@ function getCachedFont(color) {
     }
     
     // Fallback glyph
+    const fallbackGlyph = getGlyph('\x00');
     for (let row = 0; row < FONT_H; row++) {
-        const line = FALLBACK[row];
+        const line = fallbackGlyph[row];
         for (let col = 0; col < FONT_W; col++) {
             if (line[col] === '#') ctx.fillRect(x + col, row, 1, 1);
         }

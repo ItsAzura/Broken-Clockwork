@@ -1,0 +1,16 @@
+node_modules
+node_modules/
+node_modules/**
+.git
+.git/
+.kiro
+.kiro/
+*.test.js
+package.json
+package-lock.json
+vitest.config.js
+README.md
+CHEAT_CODES.md
+wavedash.toml
+.wavedashignore
+.gitignore
