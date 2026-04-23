@@ -64,7 +64,7 @@ describe('Death System - killSource tracking', () => {
                 "ALMOST DOESN'T COUNT."
             ],
             trigger_tile: [
-                "YOU TRIGGERED THAT.",
+                "YOU TRIGGERED IT.",
                 "WATCH YOUR STEP.",
                 "THE FLOOR BETRAYED YOU.",
                 "INVISIBLE DOESN'T MEAN SAFE."
@@ -101,7 +101,8 @@ describe('Death System - killSource tracking', () => {
                     // Reset state for each test
                     resetAllDeaths();
                     deathState.isDying = false;
-                    deathState.lastRespawnTime = 0;
+                    // Set lastRespawnTime to avoid quick death logic (< 0.5s since respawn)
+                    deathState.lastRespawnTime = gameTime - 1.0;
 
                     const player = { x: playerPos.x, y: playerPos.y };
                     const particles = [];

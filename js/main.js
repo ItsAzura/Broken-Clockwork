@@ -3,6 +3,15 @@
  * Boot, main loop, state machine, level lifecycle, camera,
  * and all the rage-mode glue: autonomous obstacles, gear tokens,
  * locked exit door, instant-death pipeline, freeze-frame + respawn.
+ *
+ * Masocore additions:
+ *   - Ghost replay buffer (best attempt shown behind live Mira)
+ *   - Room time tracking for Pattern Betrayal
+ *   - Coyote death (overlap frame forgiveness)
+ *   - Close-call celebration system
+ *   - Second Wind trap integration
+ *   - Checkpoint system for levels 4–5
+ *   - Offbeat music drift
  */
 
 import {
@@ -10,6 +19,10 @@ import {
     WIND_RANGE, GAUGE_DRAIN_PER_WIND,
     PLAYER_W, PLAYER_H, NEAR_MISS_DISTANCE,
     LEVEL_CLEAR_HOLD, LEVEL_CLEAR_PARTICLES,
+    GHOST_REPLAY_CAP, MERCY_HINT_THRESHOLD,
+    CLOSE_CALL_DISPLAY_FRAMES, EXTREME_CLOSE_CALL_DISPLAY_FRAMES,
+    CLOSE_CALL_DISTANCE, EXTREME_CLOSE_CALL_DISTANCE,
+    OFFBEAT_MERCY_THRESHOLD, SECOND_WIND_DURATION,
 } from './constants.js';
 import {
     drawPixelRect, drawPixelText, drawTile, spawnSparks, updateAndDrawParticles,
@@ -19,14 +32,16 @@ import {
     initAudio, resumeAudio, playWindUp, playFreeze, playGaugeLow,
     playRefill, playLevelClear, playGameOver, playJump, playTick,
     startMusic, stopMusic, unlockNote, resetNotes, unlockAllNotes,
-    setHumVolume,
+    setHumVolume, playCloseCall, playExtremeCloseCall,
+    playSecondWindWarning, playCheckpointActivate,
+    setOffbeatMode, syncMusicToObstacles, resetMusicInterval,
 } from './audio.js';
 import { LEVELS, getLevel, validateLevelTraps } from './levels.js';
 import { WindableObject } from './WindableObject.js';
-import { AutonomousObstacle, rectOverlapsBounds } from './AutonomousObstacle.js';
+import { AutonomousObstacle, rectOverlapsBounds, distanceToBounds } from './AutonomousObstacle.js';
 import {
     createPlayer, updatePlayer, drawPlayer, startWindUp, cancelWindUp,
-    tickWindUp, applyWindCost, getPlayerHitbox, nearMissCheck,
+    tickWindUp, applyWindCost, getPlayerHitbox, nearMissCheck, closeCallCheck,
 } from './player.js';
 import {
     updatePlayerPhysics, findNearestWindable,
@@ -36,23 +51,36 @@ import {
     drawHUD, drawTitle, drawLevelClear, drawGameOver, drawPaused,
     drawWindPrompt, drawTransition, drawFlashOverlay,
     drawGearToken, drawLockedDoor,
+    drawGhostMira, drawCloseCallIndicator, drawCheckpoint,
+    drawColorBetrayalTile, drawMercyHints,
 } from './ui.js';
 import {
     deathState, resetAllDeaths, resetLevelDeaths, markRespawnNow,
     triggerDeath, updateDeathState, drawDeathFlash, drawTauntMessage,
     getDeathCount, getLevelDeathCount, isDying, isFreezing,
+    checkCoyoteOverlap, resetCoyoteOverlap, recordObstacleDeath, shouldShowMercy,
+    getObstacleDeathCount,
 } from './deathSystem.js';
 import { TriggerTile, FakeSafeZone, TrollToken, HiddenKillGear, BaitPath, OneFrameWindow, PhaseShiftObstacle, AlmostMomentTrap, MirrorCorridor, ProximityTrigger } from './trapSystem.js';
 import { LiarCounter } from './liarCounter.js';
 
 // Initialize Wavedash SDK to signal load completion
 // WavedashJS is injected by the platform — guard for local dev
-if (typeof window.WavedashJS !== 'undefined') {
-    window.WavedashJS.init({ debug: false });
+try {
+    if (typeof window.WavedashJS !== 'undefined') {
+        window.WavedashJS.init({ debug: false });
+    }
+} catch (e) {
+    console.warn('WavedashJS init failed:', e);
 }
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
+
+// Ensure focus for iframe environments (Wavedash)
+canvas.focus();
+document.addEventListener('click', () => { canvas.focus(); window.focus(); });
+document.addEventListener('pointerdown', () => { canvas.focus(); window.focus(); });
 
 function fitCanvas() {
     const SCALE = Math.max(1, Math.min(
@@ -103,10 +131,54 @@ const game = {
     almostMomentTrap: null,
     proximityTriggers: [],
     liarCounter: new LiarCounter(),
+    colorBetrayalZones: [],
+    // ─── Masocore additions ───
+    roomTime: 0,
+    ghostReplay: {
+        frames: [],
+        maxFrames: GHOST_REPLAY_CAP,
+        bestFrames: [],
+        bestDistance: 0,
+        currentIndex: 0,
+    },
+    closeCallType: null,
+    closeCallTimer: 0,
+    secondWindActive: false,
+    secondWindTimer: 0,
+    secondWindObstacles: [],
+    checkpoints: [],
+    activeCheckpoint: null,
+    checkpointTokensCollected: [],
 };
 
 function loadLevel(idx) {
+    // ─── Defensive module import checks ───
+    console.log('[LOAD_LEVEL] Starting level load, index:', idx);
+    console.log('[LOAD_LEVEL] Environment check - WavedashJS:', typeof window.WavedashJS !== 'undefined' ? 'present' : 'not present');
+    
+    // Check critical imports from levels.js
+    if (typeof LEVELS === 'undefined') {
+        console.error('[LOAD_LEVEL] CRITICAL: LEVELS array is undefined - levels.js may have failed to load');
+    }
+    if (typeof getLevel === 'undefined') {
+        console.error('[LOAD_LEVEL] CRITICAL: getLevel function is undefined - levels.js may have failed to load');
+        throw new Error('getLevel function is undefined - cannot load level');
+    }
+    
+    // Check critical constants from constants.js
+    if (typeof STATES === 'undefined') {
+        console.error('[LOAD_LEVEL] CRITICAL: STATES is undefined - constants.js may have failed to load');
+    }
+    if (typeof TILE === 'undefined') {
+        console.error('[LOAD_LEVEL] CRITICAL: TILE is undefined - constants.js may have failed to load');
+    }
+    if (typeof OBJ === 'undefined') {
+        console.error('[LOAD_LEVEL] CRITICAL: OBJ is undefined - constants.js may have failed to load');
+    }
+    
+    console.log('[LOAD_LEVEL] Module checks passed, calling getLevel...');
     const data = getLevel(idx - 1);
+    console.log('[LOAD_LEVEL] Level data retrieved:', data ? 'success' : 'null');
     game.levelData = data;
     
     // Validate level trap configuration
@@ -259,6 +331,23 @@ function loadLevel(idx) {
         game.mirrorCorridors = [];
     }
 
+    // Load color betrayal zones
+    try {
+        game.colorBetrayalZones = (data.colorBetrayalZones || []).map(zone => ({
+            x: zone.x,
+            y: zone.y,
+            w: zone.w,
+            h: zone.h,
+            color: zone.color,
+            triggerObstacleId: zone.triggerObstacleId,
+            oneShot: zone.oneShot,
+            activated: false,
+        }));
+    } catch (e) {
+        console.error('Error loading color betrayal zones:', e);
+        game.colorBetrayalZones = [];
+    }
+
     // Synchronize obstacles for one frame windows
     try {
         for (const window of game.oneFrameWindows) {
@@ -281,11 +370,13 @@ function loadLevel(idx) {
 
     let spawn = data.playerSpawn;
     if (!spawn) {
+        // Use inline fallback for TILE constant (Wavedash service worker can corrupt module imports)
+        const tileSize = (typeof TILE !== 'undefined') ? TILE : 16;
         for (let ty = 0; ty < game.tiles.length; ty++) {
             const row = game.tiles[ty];
             const px = row.indexOf('P');
             if (px >= 0) {
-                spawn = { x: px * TILE, y: ty * TILE };
+                spawn = { x: px * tileSize, y: ty * tileSize };
                 game.tiles[ty] = row.replace('P', '.');
                 break;
             }
@@ -296,6 +387,50 @@ function loadLevel(idx) {
     game.player = createPlayer(spawn.x, spawn.y);
     game.camera.x = 0; game.camera.y = 0;
     updateCamera(true);
+
+    // ─── Masocore state init ───
+    game.roomTime = 0;
+    // Ghost replay system
+    game.ghostReplay = {
+        frames: [],
+        maxFrames: GHOST_REPLAY_CAP,
+        bestFrames: [],
+        bestDistance: 0,
+        currentIndex: 0,
+    };
+    game.closeCallType = null;
+    game.closeCallTimer = 0;
+    game.secondWindActive = false;
+    game.secondWindTimer = 0;
+
+    // Checkpoints from level data
+    game.checkpoints = (data.checkpoints || []).map(cp => ({
+        x: cp.x, y: cp.y, activated: false,
+    }));
+    game.activeCheckpoint = null;
+    game.checkpointTokensCollected = [];
+
+    // Second Wind trap obstacles
+    game.secondWindObstacles = [];
+    if (data.secondWindTrap) {
+        for (const swConfig of (Array.isArray(data.secondWindTrap) ? data.secondWindTrap : [data.secondWindTrap])) {
+            // Use obstacleConfig sub-object if present, otherwise spread directly
+            const obsData = swConfig.obstacleConfig || swConfig;
+            const swObs = new AutonomousObstacle({
+                ...obsData,
+                isSecondWind: true,
+                initiallyActive: false,
+            });
+            game.secondWindObstacles.push(swObs);
+            game.autonomousObstacles.push(swObs);
+        }
+    }
+
+    // Offbeat music
+    resetMusicInterval();
+    if (data.listeningRhythm) {
+        setOffbeatMode(true);
+    }
 }
 
 function softRespawn() {
@@ -419,6 +554,23 @@ function softRespawn() {
         game.mirrorCorridors = [];
     }
     
+    // Load color betrayal zones
+    try {
+        game.colorBetrayalZones = (game.levelData.colorBetrayalZones || []).map(zone => ({
+            x: zone.x,
+            y: zone.y,
+            w: zone.w,
+            h: zone.h,
+            color: zone.color,
+            triggerObstacleId: zone.triggerObstacleId,
+            oneShot: zone.oneShot,
+            activated: false,
+        }));
+    } catch (e) {
+        console.error('Error respawning color betrayal zones:', e);
+        game.colorBetrayalZones = [];
+    }
+    
     // Synchronize obstacles for one frame windows
     try {
         for (const window of game.oneFrameWindows) {
@@ -432,13 +584,71 @@ function softRespawn() {
     game.sequenceComplete = false;
     game.obstaclePauseTimer = 0;
     game.obstacleSpeedMult = 1;
-    game.player = createPlayer(game.lastSpawn.x, game.lastSpawn.y);
+
+    // ─── Checkpoint-aware respawn ───
+    if (game.activeCheckpoint) {
+        game.player = createPlayer(game.activeCheckpoint.x, game.activeCheckpoint.y);
+        // Restore tokens collected before checkpoint
+        for (let i = 0; i < game.gearTokens.length; i++) {
+            if (game.checkpointTokensCollected.includes(i)) {
+                game.gearTokens[i].collected = true;
+            }
+        }
+        game.gearsCollected = game.checkpointTokensCollected.length;
+    } else {
+        game.player = createPlayer(game.lastSpawn.x, game.lastSpawn.y);
+    }
+
     game.particles.length = 0;
     markRespawnNow(game.gameTime);
     updateCamera(true);
     
     // Reset phase shift obstacles to base speed
     resetPhaseShiftObstacles();
+
+    // ─── Masocore respawn state ───
+    // Save replay buffer as best if further than previous best
+    const currentDistance = calculatePlayerDistance(game.player, game.lastSpawn);
+    if (game.ghostReplay.frames.length > 0 && currentDistance > game.ghostReplay.bestDistance) {
+        game.ghostReplay.bestFrames = game.ghostReplay.frames.slice();
+        game.ghostReplay.bestDistance = currentDistance;
+    }
+    game.ghostReplay.frames = [];
+    game.ghostReplay.currentIndex = 0;
+    game.roomTime = 0;
+    game.closeCallType = null;
+    game.closeCallTimer = 0;
+    game.secondWindActive = false;
+    game.secondWindTimer = 0;
+
+    // Re-add second wind obstacles (they get recreated with obstacle array)
+    if (game.levelData.secondWindTrap) {
+        game.secondWindObstacles = [];
+        for (const swConfig of (Array.isArray(game.levelData.secondWindTrap) ? game.levelData.secondWindTrap : [game.levelData.secondWindTrap])) {
+            // Use obstacleConfig sub-object if present, otherwise spread directly
+            const obsData = swConfig.obstacleConfig || swConfig;
+            const swObs = new AutonomousObstacle({
+                ...obsData,
+                isSecondWind: true,
+                initiallyActive: false,
+            });
+            game.secondWindObstacles.push(swObs);
+            game.autonomousObstacles.push(swObs);
+        }
+    }
+
+    // Propagate mercy hints to obstacles based on death counts
+    for (const obs of game.autonomousObstacles) {
+        if (obs.id && shouldShowMercy(obs.id)) {
+            obs.showMercyHint = true;
+            if (obs.type === 'BOUNCING_BALL') obs.ghostTrailFrames = 6;
+        }
+    }
+
+    // Offbeat mercy sync
+    if (game.levelData.listeningRhythm && getLevelDeathCount() > OFFBEAT_MERCY_THRESHOLD) {
+        syncMusicToObstacles();
+    }
 }
 
 function resetPhaseShiftObstacles() {
@@ -446,6 +656,44 @@ function resetPhaseShiftObstacles() {
         if (obstacle instanceof PhaseShiftObstacle) {
             obstacle.reset();
         }
+    }
+}
+
+function calculatePlayerDistance(player, spawn) {
+    // Calculate Manhattan distance from spawn point
+    return Math.abs(player.x - spawn.x) + Math.abs(player.y - spawn.y);
+}
+
+function recordGhostFrame() {
+    // Record current player state for ghost replay
+    const frame = {
+        x: game.player.x,
+        y: game.player.y,
+        animFrame: game.player.animFrame || 0,
+        facing: game.player.facing || 1,
+        anim: game.player.anim || 'idle',
+    };
+    
+    // Add frame to buffer (circular buffer behavior)
+    if (game.ghostReplay.frames.length < game.ghostReplay.maxFrames) {
+        game.ghostReplay.frames.push(frame);
+    } else {
+        // Buffer full - shift and add (circular buffer)
+        game.ghostReplay.frames.shift();
+        game.ghostReplay.frames.push(frame);
+    }
+}
+
+function updateGhostReplay() {
+    // Record current frame
+    recordGhostFrame();
+    
+    // Check if this is a new best attempt
+    const currentDistance = calculatePlayerDistance(game.player, game.lastSpawn);
+    if (currentDistance > game.ghostReplay.bestDistance) {
+        game.ghostReplay.bestDistance = currentDistance;
+        // Save current recording as best replay
+        game.ghostReplay.bestFrames = game.ghostReplay.frames.slice();
     }
 }
 
@@ -470,7 +718,11 @@ function updateTransition(dt) {
     game.transition.alpha += game.transition.dir * speed * dt;
     if (game.transition.dir > 0 && game.transition.alpha >= 1) {
         game.transition.alpha = 1;
-        if (game.transition.callback) game.transition.callback();
+        try {
+            if (game.transition.callback) game.transition.callback();
+        } catch (e) {
+            console.error('Transition callback error:', e);
+        }
         game.transition.dir = -1;
     } else if (game.transition.dir < 0 && game.transition.alpha <= 0) {
         game.transition.alpha = 0;
@@ -479,10 +731,15 @@ function updateTransition(dt) {
 }
 
 function updateCamera(snap = false) {
-    const tilemapW = game.tiles[0].length * TILE;
-    const tilemapH = game.tiles.length * TILE;
-    const targetX = Math.max(0, Math.min(tilemapW - SCREEN_W, game.player.x - SCREEN_W / 2 + 4));
-    const targetY = Math.max(0, Math.min(tilemapH - SCREEN_H, game.player.y - SCREEN_H / 2 + 6));
+    // Use inline fallbacks for constants (Wavedash service worker can corrupt module imports)
+    const tileSize = (typeof TILE !== 'undefined') ? TILE : 16;
+    const screenW = (typeof SCREEN_W !== 'undefined') ? SCREEN_W : 320;
+    const screenH = (typeof SCREEN_H !== 'undefined') ? SCREEN_H : 240;
+    
+    const tilemapW = game.tiles[0].length * tileSize;
+    const tilemapH = game.tiles.length * tileSize;
+    const targetX = Math.max(0, Math.min(tilemapW - screenW, game.player.x - screenW / 2 + 4));
+    const targetY = Math.max(0, Math.min(tilemapH - screenH, game.player.y - screenH / 2 + 6));
     if (snap) { game.camera.x = targetX | 0; game.camera.y = targetY | 0; return; }
     game.camera.x += (targetX - game.camera.x) * 0.15;
     game.camera.y += (targetY - game.camera.y) * 0.15;
@@ -584,6 +841,9 @@ function collectTokens() {
                 game.flash = 0.4;
                 game.shake = 6;
                 showMessage('ALL GEARS!', 1.2);
+                
+                // ─── Activate Second Wind Trap (Victory Troll) ───
+                activateSecondWindTrap();
             }
         }
     }
@@ -613,6 +873,9 @@ function collectTokens() {
                 game.flash = 0.4;
                 game.shake = 6;
                 showMessage('ALL GEARS!', 1.2);
+                
+                // ─── Activate Second Wind Trap (Victory Troll) ───
+                activateSecondWindTrap();
             }
         }
     }
@@ -623,6 +886,76 @@ function collectTokens() {
         if (game.almostMomentTrap.checkTrigger(game.gearsCollected, totalGears)) {
             game.almostMomentTrap.activate(game);
         }
+    }
+}
+
+function checkCheckpointActivation() {
+    const hit = getPlayerHitbox(game.player);
+    
+    for (const checkpoint of game.checkpoints) {
+        if (checkpoint.activated) continue;
+        
+        // Checkpoint hitbox (12x12 brass clock)
+        const cpHitbox = { x: checkpoint.x, y: checkpoint.y, w: 12, h: 12 };
+        
+        // Check if player overlaps checkpoint
+        if (hit.x < cpHitbox.x + cpHitbox.w && hit.x + hit.w > cpHitbox.x &&
+            hit.y < cpHitbox.y + cpHitbox.h && hit.y + hit.h > cpHitbox.y) {
+            
+            // Activate checkpoint
+            checkpoint.activated = true;
+            game.activeCheckpoint = checkpoint;
+            
+            // Save current token collection state
+            game.checkpointTokensCollected = [];
+            for (let i = 0; i < game.gearTokens.length; i++) {
+                if (game.gearTokens[i].collected) {
+                    game.checkpointTokensCollected.push(i);
+                }
+            }
+            
+            // Play activation sound and visual effect
+            playCheckpointActivate();
+            spawnSparks(game.particles, checkpoint.x + 6, checkpoint.y + 6, 12,
+                [COLORS.SPARK_1, COLORS.GLOW_WARM, COLORS.METAL_LIGHT]);
+            
+            game.flash = 0.3;
+            game.shake = 4;
+            showMessage('CHECKPOINT ACTIVATED', 1.0);
+        }
+    }
+}
+
+/**
+ * Activate Second Wind Trap (Victory Troll)
+ * Triggers when all tokens are collected.
+ * Spawns trap obstacles that fade in and disappear after 8 seconds.
+ * Only activates once per level.
+ */
+function activateSecondWindTrap() {
+    // Check if we have second wind obstacles configured
+    if (!game.secondWindObstacles || game.secondWindObstacles.length === 0) {
+        return;
+    }
+    
+    // Check if already activated
+    if (game.secondWindActive) {
+        return;
+    }
+    
+    // Mark as activated (prevents double activation)
+    game.secondWindActive = true;
+    
+    // Play warning sound (220Hz triangle note, 0.5s decay)
+    playSecondWindWarning();
+    
+    // Activate all second wind obstacles
+    for (const swObstacle of game.secondWindObstacles) {
+        // Set activation source for killSource tracking
+        swObstacle.activationSource = 'second_wind';
+        
+        // Activate the obstacle (starts fade-in and timer)
+        swObstacle.activateSecondWind();
     }
 }
 
@@ -714,13 +1047,29 @@ function checkLethalCollisions() {
         }
     }
 
+    // Track which obstacles are currently overlapping for coyote death system
+    const currentlyOverlapping = new Set();
+
     for (const a of game.autonomousObstacles) {
         const b = a.getBounds();
         if (rectOverlapsBounds(hit, b)) {
-            // Check if obstacle has a trap activation source for killSource tracking
-            const killSource = a.activationSource || null;
-            dieNow({ killSource });
-            return true;
+            // Generate unique ID for this obstacle (use id if available, otherwise use object reference)
+            const obstacleId = a.id || a;
+            currentlyOverlapping.add(obstacleId);
+
+            // Check coyote death forgiveness
+            const withinForgiveness = checkCoyoteOverlap(obstacleId);
+            
+            if (!withinForgiveness) {
+                // Exceeded coyote frames threshold - trigger death
+                const killSource = a.activationSource || null;
+                dieNow({ killSource });
+                return true;
+            }
+        } else {
+            // Not overlapping - reset coyote counter for this obstacle
+            const obstacleId = a.id || a;
+            resetCoyoteOverlap(obstacleId);
         }
     }
 
@@ -737,7 +1086,7 @@ function checkLethalCollisions() {
 
     // Check hidden kill gear collisions
     for (const gear of game.hiddenKillGears) {
-        if (gear.checkCollision(hit)) {
+        if (gear.isLethal && gear.checkCollision(hit)) {
             dieNow({ killSource: 'hidden_gear' });
             return true;
         }
@@ -752,6 +1101,55 @@ function handleNearMisses() {
         playWindUp(0.35);
         spawnSparks(game.particles, game.player.x + 4, game.player.y + 6, 2,
             [COLORS.SPARK_1, COLORS.GLOW_WARM]);
+    }
+}
+
+function handleCloseCall() {
+    const hit = getPlayerHitbox(game.player);
+    // Use inline values as fallback — Wavedash service worker can corrupt module imports
+    const extremeDist = (typeof EXTREME_CLOSE_CALL_DISTANCE !== 'undefined') ? EXTREME_CLOSE_CALL_DISTANCE : 2;
+    const closeDist = (typeof CLOSE_CALL_DISTANCE !== 'undefined') ? CLOSE_CALL_DISTANCE : 4;
+    const extremeFrames = (typeof EXTREME_CLOSE_CALL_DISPLAY_FRAMES !== 'undefined') ? EXTREME_CLOSE_CALL_DISPLAY_FRAMES : 30;
+    const closeFrames = (typeof CLOSE_CALL_DISPLAY_FRAMES !== 'undefined') ? CLOSE_CALL_DISPLAY_FRAMES : 20;
+    
+    for (const obstacle of game.autonomousObstacles) {
+        const bounds = obstacle.getBounds();
+        if (!bounds) continue;
+        
+        // Skip overlapping obstacles (those are deaths, not close calls)
+        if (rectOverlapsBounds(hit, bounds)) {
+            continue;
+        }
+        
+        // Calculate edge-to-edge distance
+        const distance = distanceToBounds(hit, bounds);
+        
+        // Detect extreme close call (distance <= 2px)
+        if (distance > 0 && distance <= extremeDist) {
+            // Only trigger once per obstacle per close call
+            if (!obstacle._wasCloseCall) {
+                game.closeCallType = 'extreme';
+                game.closeCallTimer = extremeFrames;
+                playExtremeCloseCall();
+                // White flash effect
+                game.flash = 0.15;
+                obstacle._wasCloseCall = true;
+            }
+        }
+        // Detect close call (2px < distance <= 4px)
+        else if (distance > extremeDist && distance <= closeDist) {
+            // Only trigger once per obstacle per close call
+            if (!obstacle._wasCloseCall) {
+                game.closeCallType = 'close';
+                game.closeCallTimer = closeFrames;
+                playCloseCall();
+                obstacle._wasCloseCall = true;
+            }
+        }
+        // Reset flag when distance is greater
+        else if (distance > closeDist) {
+            obstacle._wasCloseCall = false;
+        }
     }
 }
 
@@ -780,15 +1178,53 @@ function update(dt) {
 
     if (game.state === STATES.TITLE) {
         if (justPressed('SPACE') && !game.transition.active) {
+            console.log('[GAME] Space pressed on title, starting transition...');
             initAudio(); resumeAudio(); startMusic();
             startTransition(1, () => {
-                resetAllDeaths();
-                game.deathCount = 0;
-                game.level = 1;
-                loadLevel(1);
-                resetLevelDeaths();
-                markRespawnNow(game.gameTime);
-                game.state = STATES.PLAYING;
+                try {
+                    console.log('[GAME] Transition callback executing...');
+                    console.log('[GAME] State before transition:', game.state);
+                    console.log('[GAME] Level before transition:', game.level);
+                    
+                    resetAllDeaths();
+                    game.deathCount = 0;
+                    game.level = 1;
+                    
+                    console.log('[GAME] Calling loadLevel(1)...');
+                    loadLevel(1);
+                    console.log('[GAME] loadLevel(1) completed successfully');
+                    
+                    resetLevelDeaths();
+                    markRespawnNow(game.gameTime);
+                    game.state = STATES.PLAYING;
+                    
+                    console.log('[GAME] State after transition:', game.state);
+                    console.log('[GAME] Now in PLAYING state, level loaded.');
+                } catch (e) {
+                    console.error('[GAME] CRITICAL ERROR during state transition:', e);
+                    console.error('[GAME] Error stack:', e.stack);
+                    console.error('[GAME] State:', game.state);
+                    console.error('[GAME] Level:', game.level);
+                    console.error('[GAME] Level data:', game.levelData);
+                    
+                    // Display error on canvas for Wavedash debugging
+                    game.state = STATES.TITLE; // Revert to title screen
+                    game.message = 'LOAD ERROR - CHECK CONSOLE';
+                    game.messageTimer = 10.0;
+                    
+                    // Try to render error message on canvas
+                    try {
+                        ctx.fillStyle = '#C84020';
+                        ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+                        ctx.fillStyle = '#F5E8C0';
+                        ctx.font = '10px monospace';
+                        ctx.fillText('LEVEL LOAD ERROR', 10, 20);
+                        ctx.fillText('Check console for details', 10, 35);
+                        ctx.fillText(String(e.message).substring(0, 40), 10, 50);
+                    } catch (renderError) {
+                        console.error('[GAME] Failed to render error message:', renderError);
+                    }
+                }
             });
         }
         if (justPressed('RETRY')) {
@@ -816,7 +1252,21 @@ function update(dt) {
         if (ds === 'dying') { clearPressed(); return; }
 
         updateObstaclePause(dt);
-        for (const a of game.autonomousObstacles) a.update(dt);
+        for (const a of game.autonomousObstacles) a.update(dt, game.roomTime);
+
+        // ─── Update room time for pattern betrayal ───
+        game.roomTime += dt;
+
+        // ─── Update ghost replay ───
+        updateGhostReplay();
+
+        // ─── Update close-call timer ───
+        if (game.closeCallTimer > 0) {
+            game.closeCallTimer--;
+            if (game.closeCallTimer <= 0) {
+                game.closeCallType = null;
+            }
+        }
 
         // Update liar counter
         try {
@@ -880,6 +1330,44 @@ function update(dt) {
             }
         } catch (e) {
             console.error('Error updating proximity triggers:', e);
+        }
+
+        // Check color betrayal zones
+        try {
+            const playerHitbox = getPlayerHitbox(game.player);
+            for (const zone of game.colorBetrayalZones) {
+                // Skip if already activated and oneShot is true
+                if (zone.activated && zone.oneShot) {
+                    continue;
+                }
+                
+                // Check if player enters the zone
+                const inZone = playerHitbox.x < zone.x + zone.w && 
+                               playerHitbox.x + playerHitbox.w > zone.x &&
+                               playerHitbox.y < zone.y + zone.h && 
+                               playerHitbox.y + playerHitbox.h > zone.y;
+                
+                if (inZone && !zone.activated) {
+                    // Activate the linked obstacle
+                    const obstacle = game.autonomousObstacles.find(a => a.id === zone.triggerObstacleId);
+                    if (obstacle) {
+                        // Set activation source for killSource tracking
+                        obstacle.activationSource = 'color_betrayal';
+                        if (obstacle.activate) {
+                            obstacle.activate();
+                        }
+                        // Mark zone as activated
+                        zone.activated = true;
+                        // Visual/audio feedback
+                        game.flash = 0.2;
+                        game.shake = 4;
+                    } else {
+                        console.warn('ColorBetrayalZone references non-existent obstacle:', zone.triggerObstacleId);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Error checking color betrayal zones:', e);
         }
 
         for (const t of game.gearTokens) {
@@ -964,7 +1452,9 @@ function update(dt) {
         }
 
         collectTokens();
+        checkCheckpointActivation();
         handleNearMisses();
+        handleCloseCall(); // Check for close calls
         
         try {
             handleHiddenGearProximity();
@@ -1006,7 +1496,7 @@ function update(dt) {
 
     if (game.state === STATES.LEVEL_CLEAR) {
         for (const a of game.autonomousObstacles) a.speedMult = Math.max(0, (a.speedMult || 1) - dt * 0.8);
-        for (const a of game.autonomousObstacles) a.update(dt);
+        for (const a of game.autonomousObstacles) a.update(dt, game.roomTime);
 
         game.levelClearTimer += dt;
         if (game.levelClearTimer < 1.5 && Math.random() < 0.35) {
@@ -1090,12 +1580,22 @@ function drawWorld() {
         }
     }
 
+    // Draw color betrayal zones (visual troll - looks like safe exit)
+    for (const zone of game.colorBetrayalZones || []) {
+        if (!zone.activated) {
+            drawColorBetrayalTile(ctx, zone, camX, camY);
+        }
+    }
+
     if (game.levelData.goalTrigger) {
         drawLockedDoor(ctx, game.levelData.goalTrigger, camX, camY, game.tick,
             game.gearsCollected === game.gearTokens.length);
     }
 
     for (const a of game.autonomousObstacles) a.draw(ctx, camX, camY, game.tick);
+
+    // ─── Draw mercy hints for obstacles that have killed player 5+ times ───
+    drawMercyHints(ctx, game.autonomousObstacles, { getObstacleDeathCount }, camX, camY, game.tick);
 
     for (const o of game.objects) o.draw(ctx, camX, camY, game.tick);
 
@@ -1109,7 +1609,27 @@ function drawWorld() {
         }
     }
 
+    // Draw checkpoints
+    for (const checkpoint of game.checkpoints) {
+        drawCheckpoint(ctx, checkpoint, camX, camY, game.tick);
+    }
+
+    // ─── Draw ghost Mira (behind live Mira) ───
+    if (getLevelDeathCount() >= 3 && game.ghostReplay.bestFrames.length > 0) {
+        const ghostFrame = game.ghostReplay.bestFrames[game.ghostReplay.currentIndex];
+        if (ghostFrame) {
+            drawGhostMira(ctx, ghostFrame, camX, camY);
+            // Advance ghost replay index (circular playback)
+            game.ghostReplay.currentIndex = (game.ghostReplay.currentIndex + 1) % game.ghostReplay.bestFrames.length;
+        }
+    }
+
     if (!isDying() || isFreezing()) drawPlayer(ctx, game.player, camX, camY);
+
+    // ─── Draw close-call indicator ───
+    if (game.closeCallTimer > 0 && game.closeCallType) {
+        drawCloseCallIndicator(ctx, game.player, camX, camY, game.closeCallType, game.closeCallTimer);
+    }
 
     updateAndDrawParticles(ctx, game.particles, 1 / 60, camX, camY);
 
@@ -1142,21 +1662,44 @@ function drawBackgroundDecor(ctx) {
     }
 }
 
+let _lastDrawError = null;
+
 function draw() {
-    if (game.state === STATES.TITLE) {
-        drawTitle(ctx, game.tick);
-    } else {
-        drawWorld();
-        game.deathCount = getDeathCount();
-        drawHUD(ctx, game);
-        drawTauntMessage(ctx);
-        if (game.state === STATES.LEVEL_CLEAR) drawLevelClear(ctx, getLevelDeathCount(), getDeathCount(), game.tick);
-        if (game.state === STATES.GAME_OVER) drawGameOver(ctx, game.tick);
-        if (game.state === STATES.PAUSED) drawPaused(ctx);
+    try {
+        if (game.state === STATES.TITLE) {
+            drawTitle(ctx, game.tick);
+        } else {
+            drawWorld();
+            game.deathCount = getDeathCount();
+            drawHUD(ctx, game);
+            drawTauntMessage(ctx);
+            if (game.state === STATES.LEVEL_CLEAR) drawLevelClear(ctx, getLevelDeathCount(), getDeathCount(), game.tick);
+            if (game.state === STATES.GAME_OVER) drawGameOver(ctx, game.tick);
+            if (game.state === STATES.PAUSED) drawPaused(ctx);
+        }
+        drawDeathFlash(ctx);
+        drawFlashOverlay(ctx, game.flash);
+        drawTransition(ctx, game.transition.alpha);
+        _lastDrawError = null;
+    } catch (e) {
+        // Show error visually on canvas so it's diagnosable on Wavedash
+        if (_lastDrawError !== e.message) {
+            console.error('[DRAW ERROR]', e);
+            _lastDrawError = e.message;
+        }
+        ctx.fillStyle = '#1C1209';
+        ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+        ctx.fillStyle = '#C84020';
+        ctx.font = '10px monospace';
+        ctx.fillText('RENDER ERROR:', 10, 20);
+        ctx.fillStyle = '#F5E8C0';
+        ctx.font = '8px monospace';
+        const msg = String(e.message || e).substring(0, 50);
+        ctx.fillText(msg, 10, 35);
+        ctx.fillText('State: ' + game.state, 10, 50);
+        ctx.fillText('Level: ' + game.level, 10, 65);
+        ctx.fillText('Tiles: ' + (game.tiles ? game.tiles.length : 'null'), 10, 80);
     }
-    drawDeathFlash(ctx);
-    drawFlashOverlay(ctx, game.flash);
-    drawTransition(ctx, game.transition.alpha);
 }
 
 let lastTime = 0;
@@ -1164,7 +1707,11 @@ function loop(timestamp) {
     const dt = Math.min((timestamp - lastTime) / 1000, DT_CAP);
     lastTime = timestamp;
     updateTransition(dt);
-    update(dt);
+    try {
+        update(dt);
+    } catch (e) {
+        console.error('[UPDATE ERROR]', e);
+    }
     draw();
     requestAnimationFrame(loop);
 }

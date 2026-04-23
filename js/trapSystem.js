@@ -165,7 +165,7 @@ export class HiddenKillGear {
     this.x = config.x;
     this.y = config.y;
     this.radius = config.radius || 8;
-    this.isLethal = true;
+    this.isLethal = config.isLethal !== undefined ? config.isLethal : true;
     this.humRadius = config.humRadius || 40;
   }
 
@@ -202,12 +202,22 @@ export class HiddenKillGear {
  */
 export class BaitPath {
   constructor(config) {
-    this.x = config.x;
-    this.y = config.y;
-    this.w = config.w;
-    this.h = config.h;
-    this.obstacleIds = config.obstacleIds || [];
-    this.narrowPathObstacleIds = config.narrowPathObstacleIds || [];
+    // Support both flat and nested (widePath/narrowPath) config formats
+    if (config.widePath) {
+      this.x = config.widePath.x;
+      this.y = config.widePath.y;
+      this.w = config.widePath.w;
+      this.h = config.widePath.h;
+      this.obstacleIds = config.widePath.obstacleIds || [];
+      this.narrowPathObstacleIds = config.narrowPath ? config.narrowPath.obstacleIds || [] : [];
+    } else {
+      this.x = config.x;
+      this.y = config.y;
+      this.w = config.w;
+      this.h = config.h;
+      this.obstacleIds = config.obstacleIds || [];
+      this.narrowPathObstacleIds = config.narrowPathObstacleIds || [];
+    }
     
     // Validate obstacle density: wide path must have more obstacles than narrow path
     this.validateObstacleDensity();

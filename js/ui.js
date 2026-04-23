@@ -2,14 +2,22 @@
  * ui.js
  * HUD, title, level-clear, game-over overlays, in-world wind prompt,
  * deaths counter, gear counter, taunt panel.
+ *
+ * Masocore additions:
+ *   - Ghost Mira replay (alpha 0.3, drawn behind live Mira)
+ *   - Close-call indicators ("!" and "!!" above Mira)
+ *   - Checkpoint rendering (brass clock on wall)
+ *   - Level clear judge messages
+ *   - Second Wind countdown display
  */
 
 import { COLORS, SCREEN_W, SCREEN_H, GAUGE_LOW_THRESHOLD } from './constants.js';
 import {
     drawPixelRect, drawPixelBorder, drawPixelText, drawPixelSprite,
-    drawSpeechBubble, measurePixelText,
+    drawSpeechBubble, measurePixelText, drawPixelSpriteFlipped,
 } from './draw.js';
-import { SMALL_GEAR, OBJECT_PALETTE } from './sprites.js';
+import { SMALL_GEAR, OBJECT_PALETTE, MIRA, MIRA_PALETTE } from './sprites.js';
+import { getLevelClearJudge } from './deathSystem.js';
 
 export function drawHUD(ctx, game) {
     const tick = game.tick;
@@ -50,6 +58,18 @@ export function drawHUD(ctx, game) {
     if (game.message && game.messageTimer > 0) {
         const tw = measurePixelText(game.message, 1);
         drawPixelText(ctx, game.message, (SCREEN_W - tw) / 2 | 0, SCREEN_H - 32, COLORS.GLOW_WARM, 1);
+    }
+
+    // ─── Second Wind countdown ───
+    if (game.secondWindActive && game.secondWindTimer > 0) {
+        const countText = Math.ceil(game.secondWindTimer).toString();
+        const tw = measurePixelText(countText, 2);
+        const pulse = Math.abs(Math.sin(tick * 0.15));
+        const alpha = 0.5 + pulse * 0.5;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        drawPixelText(ctx, countText, (SCREEN_W - tw) / 2 | 0, 30, COLORS.GAUGE_LOW, 2);
+        ctx.restore();
     }
 }
 
@@ -144,15 +164,25 @@ export function drawLevelClear(ctx, levelDeaths, totalDeaths, tick) {
 
     const t = 'YOU DID IT.';
     const tw = measurePixelText(t, 3);
-    drawPixelText(ctx, t, (SCREEN_W - tw) / 2 | 0, SCREEN_H / 2 - 22, COLORS.GLOW_WARM, 3);
+    drawPixelText(ctx, t, (SCREEN_W - tw) / 2 | 0, SCREEN_H / 2 - 30, COLORS.GLOW_WARM, 3);
+
+    // ─── Level Clear Judge ───
+    const judgeMsg = getLevelClearJudge(levelDeaths);
+    const jw = measurePixelText(judgeMsg, 1);
+    // Color based on death tier
+    let judgeColor = COLORS.GLOW_WARM;
+    if (levelDeaths > 50) judgeColor = COLORS.GAUGE_LOW;
+    else if (levelDeaths > 30) judgeColor = COLORS.SPARK_2;
+    else if (levelDeaths > 15) judgeColor = COLORS.METAL_LIGHT;
+    drawPixelText(ctx, judgeMsg, (SCREEN_W - jw) / 2 | 0, SCREEN_H / 2 - 4, judgeColor, 1);
 
     const sub1 = 'DEATHS THIS LEVEL: ' + levelDeaths;
     const sw1 = measurePixelText(sub1, 1);
-    drawPixelText(ctx, sub1, (SCREEN_W - sw1) / 2 | 0, SCREEN_H / 2 + 10, COLORS.UI_MUTED, 1);
+    drawPixelText(ctx, sub1, (SCREEN_W - sw1) / 2 | 0, SCREEN_H / 2 + 14, COLORS.UI_MUTED, 1);
 
     const sub2 = 'TOTAL: ' + totalDeaths;
     const sw2 = measurePixelText(sub2, 1);
-    drawPixelText(ctx, sub2, (SCREEN_W - sw2) / 2 | 0, SCREEN_H / 2 + 22, COLORS.UI_MUTED, 1);
+    drawPixelText(ctx, sub2, (SCREEN_W - sw2) / 2 | 0, SCREEN_H / 2 + 26, COLORS.UI_MUTED, 1);
 
     if (Math.floor(tick / 30) % 2 === 0) {
         const s = 'PRESS SPACE';
@@ -254,4 +284,279 @@ export function drawLockedDoor(ctx, goal, camX, camY, tick, unlocked) {
         drawPixelRect(ctx, sx + goal.w / 2 - 2, sy + goal.h / 2 - 2, 4, 4, COLORS.GAUGE_LOW);
         drawPixelRect(ctx, sx + goal.w / 2 - 1, sy + goal.h / 2 - 1, 2, 2, COLORS.UI_BG);
     }
+}
+
+// ═══════ MASOCORE UI ADDITIONS ═══════
+
+/**
+ * Draw ghost Mira (alpha 0.3, METAL_MID tint) replaying best attempt.
+ * Drawn BEHIND live Mira. Ghost ahead = doing worse. Ghost behind = beating yourself.
+ */
+export function drawGhostMira(ctx, ghostFrame, camX, camY) {
+    if (!ghostFrame) return;
+    const sx = (ghostFrame.x - camX) | 0;
+    const sy = (ghostFrame.y - camY) | 0;
+
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+
+    // Determine frame based on stored anim info
+    let frame;
+    const animFrame = ghostFrame.animFrame || 0;
+    const anim = ghostFrame.anim || 'idle';
+
+    if (anim === 'idle') {
+        frame = (animFrame % 2 === 0) ? MIRA.idle_0 : MIRA.idle_1;
+    } else if (anim === 'walk') {
+        const frames = [MIRA.walk_0, MIRA.walk_1, MIRA.walk_2, MIRA.walk_3];
+        frame = frames[animFrame % 4];
+    } else {
+        frame = MIRA.idle_0;
+    }
+
+    // Draw with a muted tint by using reduced-alpha palette
+    const facing = ghostFrame.facing || 1;
+    if (facing < 0) {
+        drawPixelSpriteFlipped(ctx, frame, sx, sy, MIRA_PALETTE, 1);
+    } else {
+        drawPixelSprite(ctx, frame, sx, sy, MIRA_PALETTE, 1);
+    }
+
+    ctx.restore();
+}
+
+/**
+ * Draw close-call indicator above Mira.
+ * type 'close': "!" for 20 frames
+ * type 'extreme': "!!" for 30 frames + white flash
+ */
+export function drawCloseCallIndicator(ctx, player, camX, camY, closeCallType, closeCallTimer) {
+    if (closeCallTimer <= 0 || !closeCallType) return;
+    const sx = (player.x - camX + 4) | 0;
+    const sy = (player.y - camY - 8) | 0;
+
+    const text = closeCallType === 'extreme' ? '!!' : '!';
+    const tw = measurePixelText(text, 1);
+    const alpha = Math.min(1, closeCallTimer / 5); // fade out at end
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    drawPixelText(ctx, text, sx - tw / 2, sy, COLORS.SPARK_1, 1);
+    ctx.restore();
+
+    // White flash for extreme close call
+    if (closeCallType === 'extreme' && closeCallTimer > 25) {
+        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+    }
+}
+
+/**
+ * Draw checkpoint (brass clock on wall).
+ * Active checkpoints show sparkle effect.
+ */
+export function drawCheckpoint(ctx, checkpoint, camX, camY, tick) {
+    if (!checkpoint) return;
+    const sx = (checkpoint.x - camX) | 0;
+    const sy = (checkpoint.y - camY) | 0;
+
+    // Brass clock body
+    const activated = checkpoint.activated || false;
+    const bodyColor = activated ? COLORS.GLOW_WARM : COLORS.METAL_MID;
+    const faceColor = activated ? COLORS.IVORY : COLORS.METAL_LIGHT;
+
+    // Clock body (12x12)
+    drawPixelRect(ctx, sx, sy, 12, 12, COLORS.METAL_DARK);
+    drawPixelRect(ctx, sx + 1, sy + 1, 10, 10, bodyColor);
+
+    // Clock face (8x8 centered)
+    drawPixelRect(ctx, sx + 2, sy + 2, 8, 8, faceColor);
+    drawPixelRect(ctx, sx + 5, sy + 5, 2, 2, COLORS.METAL_DARK);
+
+    // Clock hands
+    if (activated) {
+        const ang = tick * 0.03;
+        const hx = sx + 6 + Math.cos(ang) * 2;
+        const hy = sy + 6 + Math.sin(ang) * 2;
+        ctx.fillStyle = COLORS.METAL_DARK;
+        ctx.fillRect(hx | 0, hy | 0, 1, 1);
+    } else {
+        // Static hands
+        ctx.fillStyle = COLORS.METAL_DARK;
+        ctx.fillRect(sx + 6, sy + 3, 1, 3);
+        ctx.fillRect(sx + 6, sy + 5, 2, 1);
+    }
+
+    // Sparkle effect when activated
+    if (activated && tick % 20 < 3) {
+        ctx.fillStyle = COLORS.SPARK_1;
+        ctx.fillRect(sx + 1, sy - 2, 1, 1);
+        ctx.fillRect(sx + 10, sy - 1, 1, 1);
+        ctx.fillRect(sx + 6, sy - 3, 1, 1);
+    }
+}
+
+/**
+ * Draw Color Betrayal tile (Troll 3) — green-tinted wall
+ */
+export function drawColorBetrayalTile(ctx, zone, camX, camY) {
+    const sx = (zone.x - camX) | 0;
+    const sy = (zone.y - camY) | 0;
+    const w = zone.w || 16;
+    const h = zone.h || 16;
+    
+    // Draw the betrayal zone with green-tinted color
+    drawPixelRect(ctx, sx, sy, w, h, zone.color || COLORS.COLOR_BETRAYAL);
+    
+    // Add subtle "exit-like" styling to look inviting
+    if (w >= 12 && h >= 12) {
+        drawPixelRect(ctx, sx + 2, sy + 2, w - 4, h - 4, '#6B7B30');
+    }
+    if (w >= 8 && h >= 8) {
+        drawPixelRect(ctx, sx + 4, sy + 4, w - 8, h - 8, '#7B8B40');
+    }
+    // Subtle glow in center
+    if (w >= 12 && h >= 12) {
+        const glowW = Math.max(4, w - 12);
+        const glowH = Math.max(4, h - 12);
+        drawPixelRect(ctx, sx + 6, sy + 6, glowW, glowH, '#8B9B50');
+    }
+}
+
+/**
+ * Draw mercy hints for obstacles that have killed the player 5+ times.
+ * Hints are subtle visual cues showing safe positions or patterns.
+ */
+export function drawMercyHints(ctx, obstacles, deathSystem, camX, camY, tick) {
+    const { getObstacleDeathCount } = deathSystem;
+    const MERCY_THRESHOLD = 5;
+
+    for (const obstacle of obstacles) {
+        if (!obstacle.id) continue;
+        
+        const deathCount = getObstacleDeathCount(obstacle.id);
+        if (deathCount < MERCY_THRESHOLD) continue;
+
+        // Obstacle has killed player 5+ times - show mercy hint
+        const type = obstacle.type;
+
+        switch (type) {
+            case 'PISTON':
+                drawPistonMercyHint(ctx, obstacle, camX, camY);
+                break;
+            
+            case 'ORBIT_SPHERE':
+                drawOrbitSphereMercyHint(ctx, obstacle, camX, camY);
+                break;
+            
+            case 'GEAR_SPINNER':
+                drawGearSpinnerMercyHint(ctx, obstacle, camX, camY, tick);
+                break;
+            
+            case 'PENDULUM':
+                drawPendulumMercyHint(ctx, obstacle, camX, camY);
+                break;
+            
+            case 'BOUNCING_BALL':
+                // For bouncing ball, extend ghost trail (handled in obstacle itself)
+                if (!obstacle.ghostTrailFrames || obstacle.ghostTrailFrames < 6) {
+                    obstacle.ghostTrailFrames = 6;
+                }
+                break;
+        }
+    }
+}
+
+/**
+ * Draw faint dust particles at piston's safe position (when fully retracted)
+ */
+function drawPistonMercyHint(ctx, obstacle, camX, camY) {
+    // Safe position is at (ax, ay) when piston is fully retracted
+    const safeX = (obstacle.ax - camX) | 0;
+    const safeY = (obstacle.ay - camY) | 0;
+    
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = COLORS.METAL_MID;
+    
+    // Draw small dust particles in a cluster
+    for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        const radius = 2 + Math.random() * 2;
+        const px = safeX + Math.cos(angle) * radius;
+        const py = safeY + Math.sin(angle) * radius;
+        ctx.fillRect(px | 0, py | 0, 1, 1);
+    }
+    
+    ctx.restore();
+}
+
+/**
+ * Draw faint arc showing the full orbit path of the sphere
+ */
+function drawOrbitSphereMercyHint(ctx, obstacle, camX, camY) {
+    const cx = (obstacle.cx - camX) | 0;
+    const cy = (obstacle.cy - camY) | 0;
+    const radius = obstacle.orbitRadius || 20;
+    
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+    ctx.strokeStyle = COLORS.METAL_MID;
+    ctx.lineWidth = 1;
+    
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.stroke();
+    
+    ctx.restore();
+}
+
+/**
+ * Highlight the 1px gap between gear teeth
+ */
+function drawGearSpinnerMercyHint(ctx, obstacle, camX, camY, tick) {
+    const cx = (obstacle.x - camX) | 0;
+    const cy = (obstacle.y - camY) | 0;
+    const radius = obstacle.radius || 16;
+    const teeth = obstacle.teeth || 8;
+    
+    ctx.save();
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = COLORS.GLOW_WARM;
+    
+    // Highlight gaps between teeth
+    const angle = obstacle.angle || 0;
+    for (let i = 0; i < teeth; i++) {
+        const gapAngle = angle + (i / teeth) * Math.PI * 2 + (Math.PI / teeth);
+        const gapX = cx + Math.cos(gapAngle) * radius;
+        const gapY = cy + Math.sin(gapAngle) * radius;
+        
+        // Draw a small highlight at the gap
+        ctx.fillRect((gapX - 1) | 0, (gapY - 1) | 0, 2, 2);
+    }
+    
+    ctx.restore();
+}
+
+/**
+ * Draw 1px arc showing the full swing range of the pendulum
+ */
+function drawPendulumMercyHint(ctx, obstacle, camX, camY) {
+    const px = (obstacle.x - camX) | 0;
+    const py = (obstacle.y - camY) | 0;
+    const length = obstacle.length || 40;
+    const amplitude = obstacle.amplitude || 1.0;
+    
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+    ctx.strokeStyle = COLORS.METAL_MID;
+    ctx.lineWidth = 1;
+    
+    // Draw arc showing swing range
+    const maxAngle = amplitude;
+    ctx.beginPath();
+    ctx.arc(px, py, length, -Math.PI / 2 - maxAngle, -Math.PI / 2 + maxAngle);
+    ctx.stroke();
+    
+    ctx.restore();
 }

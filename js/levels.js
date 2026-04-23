@@ -43,13 +43,16 @@ export const LEVELS = [
         autonomousObstacles: [
             { type: AUTO.PISTON, id: 'piston_1', x: 112, y: 32,
               ax: 112, ay: 32, bx: 112, by: 80,
-              w: 10, h: 10, speed: 2.2 },
+              w: 10, h: 10, speed: Math.PI }, // Tier 1 (Green) - period 2.0s
             { type: AUTO.PISTON, id: 'piston_2', x: 176, y: 80,
               ax: 176, ay: 32, bx: 176, by: 80,
-              w: 10, h: 10, speed: 2.6 },
+              w: 10, h: 10, speed: Math.PI,
+              offbeat: true,
+              beatCycle: [0.0, 0.6, 1.2, 1.8, 2.4, 3.0],
+              safeWindow: [2.4, 2.7] }, // Tier 1 (Green) - period 2.0s - OFFBEAT PISTON (Timing Troll)
             { type: AUTO.PISTON, id: 'exit_blocker', x: 260, y: 80,
               ax: 260, ay: 32, bx: 260, by: 80,
-              w: 10, h: 10, speed: 2.8, initiallyActive: false },
+              w: 10, h: 10, speed: Math.PI, initiallyActive: false }, // Tier 1 (Green) - period 2.0s
         ],
         gearTokens: [
             { x: 104, y: 56 },
@@ -113,10 +116,14 @@ export const LEVELS = [
             { type: OBJ.CLOCK_STATION, x: 32, y: 80 },
         ],
         autonomousObstacles: [
-            { type: AUTO.ORBIT_SPHERE, id: 'orbit_left', cx: 128, cy: 88, orbitRadius: 28, orbitSpeed: 2.2, sphereR: 3, startAngle: 0 },
-            { type: AUTO.ORBIT_SPHERE, id: 'orbit_center', cx: 240, cy: 88, orbitRadius: 34, orbitSpeed: 1.6, sphereR: 3, startAngle: 1.2 },
-            { type: AUTO.ORBIT_SPHERE, id: 'orbit_right', cx: 356, cy: 88, orbitRadius: 28, orbitSpeed: 2.2, sphereR: 3, startAngle: Math.PI / 3 },
-            { type: AUTO.ORBIT_SPHERE, id: 'exit_blocker', cx: 432, cy: 88, orbitRadius: 24, orbitSpeed: 2.0, sphereR: 3, startAngle: 0, initiallyActive: false },
+            { type: AUTO.ORBIT_SPHERE, id: 'orbit_left', cx: 128, cy: 88, orbitRadius: 28, orbitSpeed: 1.0, sphereR: 3, startAngle: 0 }, // Tier 1 (Green)
+            { type: AUTO.ORBIT_SPHERE, id: 'orbit_center', cx: 240, cy: 88, orbitRadius: 34, orbitSpeed: 1.4, sphereR: 3, startAngle: 1.2,
+              patternBetrayal: true,
+              betrayalTime: 6.0,
+              betrayalDuration: 2.4,
+              speedMultiplier: 1.15 }, // Tier 2 (Yellow) - PATTERN BETRAYAL (Memory Troll)
+            { type: AUTO.ORBIT_SPHERE, id: 'orbit_right', cx: 356, cy: 88, orbitRadius: 28, orbitSpeed: 1.0, sphereR: 3, startAngle: Math.PI / 3 }, // Tier 1 (Green)
+            { type: AUTO.ORBIT_SPHERE, id: 'exit_blocker', cx: 432, cy: 88, orbitRadius: 24, orbitSpeed: 1.4, sphereR: 3, startAngle: 0, initiallyActive: false }, // Tier 2 (Yellow)
         ],
         gearTokens: [
             { x: 92,  y: 48 },
@@ -153,11 +160,19 @@ export const LEVELS = [
         },
         mirrorCorridors: [
             {
-                obstacleA: { type: 'ORBIT_SPHERE', cx: 128, cy: 88, orbitRadius: 28, orbitSpeed: 2.2, sphereR: 3, startAngle: 0 },
-                obstacleB: { type: 'ORBIT_SPHERE', cx: 356, cy: 88, orbitRadius: 28, orbitSpeed: 2.2, sphereR: 3, startAngle: 0 },
+                obstacleA: { type: 'ORBIT_SPHERE', cx: 128, cy: 88, orbitRadius: 28, orbitSpeed: 1.0, sphereR: 3, startAngle: 0 },
+                obstacleB: { type: 'ORBIT_SPHERE', cx: 356, cy: 88, orbitRadius: 28, orbitSpeed: 1.0, sphereR: 3, startAngle: 0 },
                 centerLine: 242,
                 symmetryAxis: 'vertical',
                 phaseOffset: Math.PI / 3,
+            },
+        ],
+        colorBetrayalZones: [
+            {
+                x: 180, y: 96, w: 32, h: 16,
+                color: '#5A6B20',
+                triggerObstacleId: 'orbit_center',
+                oneShot: true,
             },
         ],
     },
@@ -184,11 +199,19 @@ export const LEVELS = [
             { type: OBJ.CLOCK_STATION, x: 16, y: 80 },
         ],
         autonomousObstacles: [
-            { type: AUTO.PENDULUM, id: 'pendulum_left', x: 140, y: 16, length: 64, amplitude: Math.PI / 2.4, frequency: 1.7, tipRadius: 5 },
-            { type: AUTO.PENDULUM, id: 'pendulum_right', x: 260, y: 16, length: 68, amplitude: Math.PI / 2.2, frequency: 2.3, tipRadius: 5 },
+            { type: AUTO.PENDULUM, id: 'pendulum_left', x: 140, y: 16, length: 64, amplitude: Math.PI / 2.4, frequency: 1.2, tipRadius: 5,
+              patternBetrayal: true,
+              betrayalTime: 6.0,
+              betrayalDuration: 2.4,
+              speedMultiplier: 1.15 }, // Tier 2 (Yellow) - PATTERN BETRAYAL (Memory Troll)
+            { type: AUTO.PENDULUM, id: 'pendulum_right', x: 260, y: 16, length: 68, amplitude: Math.PI / 2.2, frequency: 1.2, tipRadius: 5,
+              patternBetrayal: true,
+              betrayalTime: 6.0,
+              betrayalDuration: 2.4,
+              speedMultiplier: 1.15 }, // Tier 2 (Yellow) - PATTERN BETRAYAL (Memory Troll)
             { type: AUTO.PISTON, id: 'exit_blocker', x: 320, y: 50,
               ax: 320, ay: 50, bx: 320, by: 86,
-              w: 12, h: 10, speed: 2.8, initiallyActive: false },
+              w: 12, h: 10, speed: Math.PI * 4 / 3, initiallyActive: false }, // Tier 2 (Yellow) - period 1.5s
         ],
         gearTokens: [
             { x: 88,  y: 80 },
@@ -227,13 +250,39 @@ export const LEVELS = [
         },
         mirrorCorridors: [
             {
-                obstacleA: { type: 'PENDULUM', x: 140, y: 16, length: 64, amplitude: Math.PI / 2.4, frequency: 1.7, tipRadius: 5 },
-                obstacleB: { type: 'PENDULUM', x: 260, y: 16, length: 68, amplitude: Math.PI / 2.2, frequency: 2.3, tipRadius: 5 },
+                obstacleA: { type: 'PENDULUM', x: 140, y: 16, length: 64, amplitude: Math.PI / 2.4, frequency: 1.2, tipRadius: 5 },
+                obstacleB: { type: 'PENDULUM', x: 260, y: 16, length: 68, amplitude: Math.PI / 2.2, frequency: 1.2, tipRadius: 5 },
                 centerLine: 200,
                 symmetryAxis: 'vertical',
                 phaseOffset: Math.PI / 3,
             },
         ],
+        colorBetrayalZones: [
+            {
+                x: 140, y: 80, w: 48, h: 16,
+                color: '#5A6B20',
+                triggerObstacleId: 'pendulum_left',
+                oneShot: true,
+            },
+            {
+                x: 240, y: 80, w: 48, h: 16,
+                color: '#5A6B20',
+                triggerObstacleId: 'pendulum_right',
+                oneShot: true,
+            },
+        ],
+        secondWindTrap: {
+            obstacleConfig: {
+                type: AUTO.BOUNCING_BALL,
+                id: 'second_wind_ball',
+                x: 200, y: 70,
+                vx: 60, vy: -40,
+                r: 4,
+                boundX: 16, boundY: 16, boundW: 368, boundH: 80
+            },
+            duration: 8.0,
+            fadeInTime: 0.5
+        },
     },
 
     // ─── LEVEL 4 ─── THE CLOCK TOWER
@@ -280,12 +329,24 @@ export const LEVELS = [
             { type: OBJ.CLOCK_STATION, x: 144, y: 208, refill: true },
         ],
         autonomousObstacles: [
-            { type: AUTO.GEAR_SPINNER, id: 'gear_lower', x: 72, y: 352, radius: 12, teeth: 6, rotationSpeed: Math.PI * 1.2 },
-            { type: AUTO.GEAR_SPINNER, id: 'gear_upper', x: 120, y: 192, radius: 14, teeth: 8, rotationSpeed: -Math.PI * 0.9 },
+            { type: AUTO.GEAR_SPINNER, id: 'gear_lower', x: 72, y: 352, radius: 12, teeth: 6, rotationSpeed: Math.PI * 1.2 }, // Tier 2 (Yellow) - kept as is
+            { type: AUTO.GEAR_SPINNER, id: 'gear_upper', x: 120, y: 192, radius: 14, teeth: 8, rotationSpeed: -Math.PI * 1.5 }, // Tier 3 (Orange)
             { type: AUTO.BOUNCING_BALL, id: 'bouncing_ball', x: 96, y: 252,
-              vx: 80, vy: 55, r: 4,
+              vx: 96, vy: 72, r: 4, // Tier 3 (Orange) - speed ~120 (96² + 72² = 14400, √14400 = 120)
               boundX: 16, boundY: 240, boundW: 160, boundH: 80 },
-            { type: AUTO.GEAR_SPINNER, id: 'exit_blocker', x: 128, y: 80, radius: 14, teeth: 8, rotationSpeed: Math.PI * 1.5, initiallyActive: false },
+            { type: AUTO.PISTON, id: 'piston_1', x: 48, y: 240,
+              ax: 48, ay: 240, bx: 48, by: 280,
+              w: 10, h: 10, speed: Math.PI * 4 / 3,
+              offbeat: true,
+              beatCycle: [0.0, 0.6, 1.2, 1.8, 2.4, 3.0],
+              safeWindow: [2.4, 2.7] }, // Tier 2 (Yellow) - OFFBEAT PISTON (Timing Troll)
+            { type: AUTO.PISTON, id: 'piston_2', x: 144, y: 120,
+              ax: 144, ay: 120, bx: 144, by: 160,
+              w: 10, h: 10, speed: Math.PI * 2,
+              offbeat: true,
+              beatCycle: [0.0, 0.6, 1.2, 1.8, 2.4, 3.0],
+              safeWindow: [2.4, 2.7] }, // Tier 3 (Orange) - OFFBEAT PISTON (Timing Troll)
+            { type: AUTO.GEAR_SPINNER, id: 'exit_blocker', x: 128, y: 80, radius: 14, teeth: 8, rotationSpeed: Math.PI * 1.8, initiallyActive: false }, // Tier 3 (Orange)
         ],
         gearTokens: [
             { x: 96,  y: 432 },
@@ -296,6 +357,10 @@ export const LEVELS = [
         ],
         goalTrigger: { x: 96, y: 16, w: 32, h: 32 },
         playerSpawn: { x: 48, y: 432 },
+        // Checkpoint system
+        checkpoints: [
+            { x: 80, y: 256 }, // Midpoint checkpoint
+        ],
         // Trap system data
         triggerTiles: [],
         fakeSafeZones: [
@@ -324,12 +389,24 @@ export const LEVELS = [
         mirrorCorridors: [
             {
                 obstacleA: { type: 'GEAR_SPINNER', x: 72, y: 352, radius: 12, teeth: 6, rotationSpeed: Math.PI * 1.2 },
-                obstacleB: { type: 'GEAR_SPINNER', x: 120, y: 192, radius: 14, teeth: 8, rotationSpeed: -Math.PI * 0.9 },
+                obstacleB: { type: 'GEAR_SPINNER', x: 120, y: 192, radius: 14, teeth: 8, rotationSpeed: -Math.PI * 1.5 },
                 centerLine: 96,
                 symmetryAxis: 'vertical',
                 phaseOffset: Math.PI / 4,
             },
         ],
+        secondWindTrap: {
+            obstacleConfig: {
+                type: AUTO.PISTON,
+                id: 'second_wind_piston',
+                x: 96, y: 80,
+                ax: 96, ay: 80, bx: 96, by: 120,
+                w: 12, h: 10,
+                speed: Math.PI * 2
+            },
+            duration: 8.0,
+            fadeInTime: 0.5
+        },
     },
 
     // ─── LEVEL 5 ─── HEART OF THE MACHINE
@@ -368,21 +445,28 @@ export const LEVELS = [
             { type: OBJ.CLOCK_STATION, x: 16, y: 144 },
         ],
         autonomousObstacles: [
-            { type: AUTO.GEAR_SPINNER, id: 'gear_center', x: 160, y: 112, radius: 14, teeth: 8, rotationSpeed: Math.PI * 1.3 },
-            { type: AUTO.PENDULUM, id: 'pendulum_center', x: 280, y: 16, length: 112, amplitude: Math.PI / 2.6, frequency: 1.6, tipRadius: 5 },
-            { type: AUTO.ORBIT_SPHERE, id: 'orbit_left', cx: 96, cy: 88, orbitRadius: 26, orbitSpeed: 2.4, sphereR: 3, startAngle: 0 },
-            { type: AUTO.ORBIT_SPHERE, id: 'orbit_right', cx: 400, cy: 88, orbitRadius: 30, orbitSpeed: -1.9, sphereR: 3, startAngle: 2 },
+            { type: AUTO.GEAR_SPINNER, id: 'gear_center', x: 160, y: 112, radius: 14, teeth: 8, rotationSpeed: Math.PI * 1.8 }, // Tier 3 (Orange)
+            { type: AUTO.PENDULUM, id: 'pendulum_center', x: 280, y: 16, length: 112, amplitude: Math.PI / 2.6, frequency: 1.6, tipRadius: 5,
+              patternBetrayal: true,
+              betrayalTime: 6.0,
+              betrayalDuration: 2.4,
+              speedMultiplier: 1.15 }, // Tier 3 (Orange) - PATTERN BETRAYAL (Memory Troll)
+            { type: AUTO.ORBIT_SPHERE, id: 'orbit_left', cx: 96, cy: 88, orbitRadius: 26, orbitSpeed: 1.8, sphereR: 3, startAngle: 0 }, // Tier 3 (Orange)
+            { type: AUTO.ORBIT_SPHERE, id: 'orbit_right', cx: 400, cy: 88, orbitRadius: 30, orbitSpeed: 1.8, sphereR: 3, startAngle: 2 }, // Tier 3 (Orange)
             { type: AUTO.BOUNCING_BALL, id: 'bouncing_ball', x: 300, y: 130,
-              vx: 80, vy: -60, r: 4,
+              vx: 96, vy: -72, r: 4, // Tier 3 (Orange) - speed ~120 (96² + 72² = 14400, √14400 = 120)
               boundX: 192, boundY: 112, boundW: 160, boundH: 60 },
             { type: AUTO.PISTON, id: 'piston_left', x: 208, y: 120,
               ax: 208, ay: 120, bx: 208, by: 156,
-              w: 10, h: 10, speed: 2.9 },
+              w: 10, h: 10, speed: Math.PI * 2,
+              offbeat: true,
+              beatCycle: [0.0, 0.6, 1.2, 1.8, 2.4, 3.0],
+              safeWindow: [2.4, 2.7] }, // Tier 3 (Orange) - period 1.0s - OFFBEAT PISTON (Timing Troll)
             { type: AUTO.PISTON, id: 'piston_right', x: 432, y: 156,
               ax: 432, ay: 120, bx: 432, by: 156,
-              w: 10, h: 10, speed: 3.2 },
-            { type: AUTO.GEAR_SPINNER, id: 'exit_blocker_1', x: 500, y: 120, radius: 14, teeth: 8, rotationSpeed: Math.PI * 1.5, initiallyActive: false },
-            { type: AUTO.PENDULUM, id: 'exit_blocker_2', x: 520, y: 16, length: 100, amplitude: Math.PI / 2.5, frequency: 1.8, tipRadius: 5, initiallyActive: false },
+              w: 10, h: 10, speed: Math.PI * 2 }, // Tier 3 (Orange) - period 1.0s
+            { type: AUTO.GEAR_SPINNER, id: 'exit_blocker_1', x: 500, y: 120, radius: 14, teeth: 8, rotationSpeed: Math.PI * 1.8, initiallyActive: false }, // Tier 3 (Orange)
+            { type: AUTO.PENDULUM, id: 'exit_blocker_2', x: 520, y: 16, length: 100, amplitude: Math.PI / 2.5, frequency: 1.6, tipRadius: 5, initiallyActive: false }, // Tier 3 (Orange)
         ],
         gearTokens: [
             { x: 76,  y: 84  },
@@ -396,6 +480,10 @@ export const LEVELS = [
         playerSpawn: { x: 48, y: 160 },
         goalTrigger: null,
         winOnSequence: true,
+        // Checkpoint system
+        checkpoints: [
+            { x: 280, y: 144 }, // Midpoint checkpoint
+        ],
         // Trap system data
         triggerTiles: [],
         fakeSafeZones: [
@@ -435,20 +523,41 @@ export const LEVELS = [
         },
         mirrorCorridors: [
             {
-                obstacleA: { type: 'ORBIT_SPHERE', cx: 96, cy: 88, orbitRadius: 26, orbitSpeed: 2.4, sphereR: 3, startAngle: 0 },
-                obstacleB: { type: 'ORBIT_SPHERE', cx: 400, cy: 88, orbitRadius: 30, orbitSpeed: -1.9, sphereR: 3, startAngle: 2 },
+                obstacleA: { type: 'ORBIT_SPHERE', cx: 96, cy: 88, orbitRadius: 26, orbitSpeed: 1.8, sphereR: 3, startAngle: 0 },
+                obstacleB: { type: 'ORBIT_SPHERE', cx: 400, cy: 88, orbitRadius: 30, orbitSpeed: 1.8, sphereR: 3, startAngle: 2 },
                 centerLine: 248,
                 symmetryAxis: 'vertical',
                 phaseOffset: Math.PI / 3,
             },
             {
-                obstacleA: { type: 'PISTON', x: 208, y: 120, ax: 208, ay: 120, bx: 208, by: 156, w: 10, h: 10, speed: 2.9 },
-                obstacleB: { type: 'PISTON', x: 432, y: 156, ax: 432, ay: 120, bx: 432, by: 156, w: 10, h: 10, speed: 3.2 },
+                obstacleA: { type: 'PISTON', x: 208, y: 120, ax: 208, ay: 120, bx: 208, by: 156, w: 10, h: 10, speed: Math.PI * 2 },
+                obstacleB: { type: 'PISTON', x: 432, y: 156, ax: 432, ay: 120, bx: 432, by: 156, w: 10, h: 10, speed: Math.PI * 2 },
                 centerLine: 320,
                 symmetryAxis: 'vertical',
                 phaseOffset: Math.PI / 4,
             },
         ],
+        colorBetrayalZones: [
+            {
+                x: 150, y: 112, w: 40, h: 16,
+                color: '#5A6B20',
+                triggerObstacleId: 'gear_center',
+                oneShot: true,
+            },
+        ],
+        secondWindTrap: {
+            obstacleConfig: {
+                type: AUTO.ORBIT_SPHERE,
+                id: 'second_wind_orbit',
+                cx: 248, cy: 88,
+                orbitRadius: 28,
+                orbitSpeed: 2.0,
+                sphereR: 3,
+                startAngle: 0
+            },
+            duration: 8.0,
+            fadeInTime: 0.5
+        },
     },
 ];
 

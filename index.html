@@ -8,8 +8,16 @@
 </head>
 <body>
     <div id="frame">
-        <canvas id="game"></canvas>
+        <canvas id="game" tabindex="1"></canvas>
     </div>
-    <script type="module" src="./js/main.js"></script>
+    <script type="module" src="./js/main.js" onerror="
+        console.error('[MODULE_LOAD] CRITICAL: Failed to load main.js module');
+        console.error('[MODULE_LOAD] This may be due to:');
+        console.error('[MODULE_LOAD]   - Incorrect MIME type (should be application/javascript)');
+        console.error('[MODULE_LOAD]   - Path resolution issues');
+        console.error('[MODULE_LOAD]   - CORS policy restrictions');
+        console.error('[MODULE_LOAD]   - Service worker interference');
+        document.body.innerHTML = '<div style=&quot;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;font-family:monospace;color:#F5E8C0;background:#1C1209;padding:20px;border:2px solid #C84020;&quot;><h2 style=&quot;color:#C84020;&quot;>MODULE LOAD ERROR</h2><p>Failed to load main.js</p><p>Check browser console for details</p><p style=&quot;font-size:10px;margin-top:10px;&quot;>Possible causes: MIME type, CORS, or path issues</p></div>';
+    "></script>
 </body>
 </html>

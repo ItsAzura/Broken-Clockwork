@@ -2,14 +2,20 @@
  * player.js
  * Player creation, animation update, sprite selection, rendering,
  * and helpers for the tighter 6x8 death hitbox + near-miss detection.
+ *
+ * Masocore additions:
+ *   - Close-call detection (4px and 2px proximity)
+ *   - Continuous gauge drain while moving (GAUGE_DRAIN_RATE)
+ *   - MOVE_SPEED tuned to 96px/s
  */
 
 import {
     PLAYER_W, PLAYER_H, MOVE_SPEED, JUMP_FORCE, ACCEL, FRICTION, COLORS, GAUGE_MAX,
-    GAUGE_DRAIN_PER_WIND, WIND_HOLD_TIME,
+    GAUGE_DRAIN_PER_WIND, WIND_HOLD_TIME, GAUGE_DRAIN_RATE,
     PLAYER_HITBOX_W, PLAYER_HITBOX_H,
     PLAYER_HITBOX_OFFSET_X, PLAYER_HITBOX_OFFSET_Y,
     NEAR_MISS_DISTANCE, COYOTE_TIME, JUMP_BUFFER,
+    CLOSE_CALL_DISTANCE, EXTREME_CLOSE_CALL_DISTANCE,
 } from './constants.js';
 import { MIRA, MIRA_PALETTE } from './sprites.js';
 import { drawPixelSprite, drawPixelSpriteFlipped, drawPixelRect } from './draw.js';
@@ -66,6 +72,37 @@ export function nearMissCheck(player, obstacles) {
     return hits;
 }
 
+/**
+ * Close-call detection for troll feedback system (3.3)
+ * Returns array of { obstacle, type: 'close' | 'extreme' }
+ * - Within 4px: 'close' (ascending two-note + "!")
+ * - Within 2px: 'extreme' ("!!" + white flash)
+ */
+export function closeCallCheck(player, obstacles) {
+    const hit = getPlayerHitbox(player);
+    const results = [];
+    for (const a of obstacles) {
+        const b = a.getBounds();
+        if (!b) continue;
+        if (rectOverlapsBounds(hit, b)) continue; // overlapping = death, not close call
+        const d = distanceToBounds(hit, b);
+        if (d > 0 && d <= EXTREME_CLOSE_CALL_DISTANCE) {
+            if (!a._wasCloseCall) {
+                results.push({ obstacle: a, type: 'extreme' });
+                a._wasCloseCall = true;
+            }
+        } else if (d > 0 && d <= CLOSE_CALL_DISTANCE) {
+            if (!a._wasCloseCall) {
+                results.push({ obstacle: a, type: 'close' });
+                a._wasCloseCall = true;
+            }
+        } else {
+            a._wasCloseCall = false;
+        }
+    }
+    return results;
+}
+
 export function updatePlayer(player, dt, allowJump) {
     // 1. Horizontal Movement with Inertia
     let inputDir = 0;
@@ -86,6 +123,9 @@ export function updatePlayer(player, dt, allowJump) {
             player.vx = inputDir * MOVE_SPEED * gaugeFactor;
         }
         player.facing = inputDir;
+
+        // ─── Continuous gauge drain while moving ───
+        player.gauge = Math.max(0, player.gauge - GAUGE_DRAIN_RATE * dt);
     } else {
         // Apply friction
         const frictionAmount = FRICTION * dt;

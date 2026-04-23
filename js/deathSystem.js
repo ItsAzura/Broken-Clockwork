@@ -1,11 +1,18 @@
 /*
  * deathSystem.js
- * Centralized death state: counts, taunts, freeze-frame, respawn timing.
+ * Centralized death state: counts, tiered taunts, freeze-frame, respawn timing.
+ *
+ * Masocore additions:
+ *   - Tiered taunt system with cause streak tracking
+ *   - Coyote death (1–2 frame overlap forgiveness)
+ *   - Per-obstacle death count for mercy hints
+ *   - Level clear judge messages
  */
 
 import {
-    TAUNT_MESSAGES, DEATH_FREEZE_FRAMES, RESPAWN_DELAY, TAUNT_DURATION,
-    COLORS, SCREEN_W, SCREEN_H,
+    TAUNT_MESSAGES, TIERED_TAUNTS, DEATH_FREEZE_FRAMES, RESPAWN_DELAY, TAUNT_DURATION,
+    COLORS, SCREEN_W, SCREEN_H, COYOTE_DEATH_FRAMES, MERCY_HINT_THRESHOLD,
+    LEVEL_CLEAR_JUDGE,
 } from './constants.js';
 import { drawPixelRect, drawPixelBorder, drawPixelText, measurePixelText } from './draw.js';
 
@@ -18,15 +25,37 @@ export const deathState = {
     respawnTimer: 0,
     isDying: false,
     lastRespawnTime: 0,
+    // ─── Tiered taunt tracking ───
+    causeStreak: { cause: null, count: 0 },
+    // ─── Per-obstacle death counts ───
+    obstacleDeathCount: {},
+    // ─── Last kill source for obstacle tracking ───
+    lastKillObstacleId: null,
 };
+
+// ─── Coyote death: overlap frame counters per obstacle ───
+const coyoteOverlapFrames = {};
 
 export function resetAllDeaths() {
     deathState.totalCount = 0;
     deathState.levelCount = 0;
+    deathState.causeStreak = { cause: null, count: 0 };
+    deathState.obstacleDeathCount = {};
+    deathState.lastKillObstacleId = null;
+    clearCoyoteFrames();
 }
 
 export function resetLevelDeaths() {
     deathState.levelCount = 0;
+    deathState.obstacleDeathCount = {};
+    deathState.lastKillObstacleId = null;
+    clearCoyoteFrames();
+}
+
+export function clearCoyoteFrames() {
+    for (const key of Object.keys(coyoteOverlapFrames)) {
+        delete coyoteOverlapFrames[key];
+    }
 }
 
 export function markRespawnNow(gameTime) {
@@ -49,12 +78,76 @@ export function isFreezing() {
     return deathState.freezeFrames > 0;
 }
 
+/**
+ * Check if coyote death forgiveness should prevent death.
+ * Returns true if overlap is within forgiveness frames (should NOT die).
+ * Returns false if overlap exceeds threshold (should die).
+ */
+export function checkCoyoteOverlap(obstacleId) {
+    if (!obstacleId) return false; // No ID = no forgiveness
+    const key = String(obstacleId);
+    if (!(key in coyoteOverlapFrames)) {
+        coyoteOverlapFrames[key] = 0;
+    }
+    coyoteOverlapFrames[key]++;
+    return coyoteOverlapFrames[key] <= COYOTE_DEATH_FRAMES;
+}
+
+/**
+ * Reset coyote overlap counter for an obstacle (called when no longer overlapping)
+ */
+export function resetCoyoteOverlap(obstacleId) {
+    const key = String(obstacleId);
+    if (key in coyoteOverlapFrames) {
+        coyoteOverlapFrames[key] = 0;
+    }
+}
+
+/**
+ * Record a death against a specific obstacle for mercy tracking
+ */
+export function recordObstacleDeath(obstacleId) {
+    if (!obstacleId) return 0;
+    const key = String(obstacleId);
+    deathState.obstacleDeathCount[key] = (deathState.obstacleDeathCount[key] || 0) + 1;
+    deathState.lastKillObstacleId = key;
+    return deathState.obstacleDeathCount[key];
+}
+
+/**
+ * Get death count for a specific obstacle
+ */
+export function getObstacleDeathCount(obstacleId) {
+    return deathState.obstacleDeathCount[String(obstacleId)] || 0;
+}
+
+/**
+ * Check if an obstacle should show mercy hints
+ */
+export function shouldShowMercy(obstacleId) {
+    return getObstacleDeathCount(obstacleId) >= MERCY_HINT_THRESHOLD;
+}
+
 export function triggerDeath(player, particles, context, gameTime, killSource = null) {
     deathState.totalCount++;
     deathState.levelCount++;
     deathState.isDying = true;
     deathState.freezeFrames = DEATH_FREEZE_FRAMES;
     deathState.respawnTimer = RESPAWN_DELAY;
+
+    // Update cause streak for tiered taunts
+    const cause = killSource || context.reason || 'generic';
+    if (deathState.causeStreak.cause === cause) {
+        deathState.causeStreak.count++;
+    } else {
+        deathState.causeStreak.cause = cause;
+        deathState.causeStreak.count = 1;
+    }
+
+    // Record obstacle death for mercy system
+    if (context.killObstacleId) {
+        recordObstacleDeath(context.killObstacleId);
+    }
 
     const taunt = pickTaunt(context, gameTime, killSource);
     deathState.tauntMsg = taunt;
@@ -63,80 +156,69 @@ export function triggerDeath(player, particles, context, gameTime, killSource = 
     spawnDeathFragments(player, particles);
 }
 
-const TRAP_TAUNTS = {
-    fake_safe_zone: [
-        "THAT WASN'T SAFE.",
-        "NOWHERE IS SAFE.",
-        "YOU THOUGHT YOU WERE CLEVER.",
-        "THE SAFE ZONE LIED."
-    ],
-    troll_token: [
-        "GREED KILLS.",
-        "SHOULD'VE LEFT IT.",
-        "THE GEAR WANTED YOU DEAD.",
-        "THAT WAS A TRAP. OBVIOUSLY."
-    ],
-    hidden_gear: [
-        "THAT ONE WAS REAL.",
-        "NOT ALL GEARS ARE DECORATIVE.",
-        "YOU HEARD THE HUM.",
-        "TRUST NOTHING."
-    ],
-    bait_path: [
-        "THE EASY PATH IS NEVER EASY.",
-        "WIDE ROADS, NARROW CHANCES.",
-        "YOU CHOSE POORLY.",
-        "SHORTCUTS ARE TRAPS."
-    ],
-    almost_moment: [
-        "SO CLOSE.",
-        "VICTORY WAS RIGHT THERE.",
-        "THE MACHINE LAUGHS.",
-        "ALMOST DOESN'T COUNT."
-    ],
-    trigger_tile: [
-        "YOU TRIGGERED THAT.",
-        "WATCH YOUR STEP.",
-        "THE FLOOR BETRAYED YOU.",
-        "INVISIBLE DOESN'T MEAN SAFE."
-    ],
-    one_frame_window: [
-        "TOO SLOW.",
-        "TIMING IS EVERYTHING.",
-        "YOU MISSED THE WINDOW.",
-        "PRECISION REQUIRED."
-    ],
-    phase_shift: [
-        "IT'S FASTER NOW.",
-        "DID YOU NOTICE THE CHANGE?",
-        "DEATH MAKES IT STRONGER.",
-        "THE MACHINE ADAPTS."
-    ],
-    mirror_corridor: [
-        "NOT AS SYMMETRICAL AS IT LOOKED.",
-        "PATTERNS LIE.",
-        "THE MIRROR IS BROKEN.",
-        "TIMING, NOT SYMMETRY."
-    ]
-};
-
 function pickTaunt(context, gameTime, killSource = null) {
-    // Check for trap-specific taunts first
-    if (killSource && TRAP_TAUNTS[killSource]) {
-        const taunts = TRAP_TAUNTS[killSource];
-        return taunts[Math.floor(Math.random() * taunts.length)];
+    const cause = killSource || context.reason || 'generic';
+    const streakCount = deathState.causeStreak.count;
+
+    // Determine tier (1-4)
+    let tier;
+    if (streakCount <= 3) tier = 1;
+    else if (streakCount <= 7) tier = 2;
+    else if (streakCount <= 12) tier = 3;
+    else tier = 4;
+
+    // Quick death override
+    const timeSinceRespawn = gameTime - deathState.lastRespawnTime;
+    if (timeSinceRespawn < 0.5) {
+        const quickTaunts = TIERED_TAUNTS.quick_death;
+        if (quickTaunts && quickTaunts[tier]) {
+            const options = quickTaunts[tier];
+            return options[Math.floor(Math.random() * options.length)];
+        }
+        return "THAT WAS FAST.";
     }
 
-    // Existing taunt logic
-    const timeSinceRespawn = gameTime - deathState.lastRespawnTime;
-    if (timeSinceRespawn < 0.5) return "THAT WAS FAST.";
-    if (context.reason === 'gauge') return "YOU FORGOT TO WIND UP. CLASSIC.";
-    if (context.reason === 'sequence') return "YOU DID THIS TO YOURSELF.";
+    // Context-specific taunts
+    if (context.reason === 'gauge') {
+        const gaugeTaunts = TIERED_TAUNTS.gauge;
+        if (gaugeTaunts && gaugeTaunts[tier]) {
+            const options = gaugeTaunts[tier];
+            return options[Math.floor(Math.random() * options.length)];
+        }
+    }
+
+    if (context.reason === 'sequence') {
+        const seqTaunts = TIERED_TAUNTS.sequence;
+        if (seqTaunts && seqTaunts[tier]) {
+            const options = seqTaunts[tier];
+            return options[Math.floor(Math.random() * options.length)];
+        }
+    }
+
+    // Had all tokens context
     if (context.hadAllTokens) return "YOU HAD THEM ALL.";
     if (context.lastToken) return "ONE MORE.";
+
+    // Milestone deaths
     if (deathState.totalCount % 10 === 0 && deathState.totalCount > 0) {
         return "DEATHS: " + deathState.totalCount + ". THE MACHINE IS PROUD.";
     }
+
+    // Tiered cause-specific taunts
+    const causeTaunts = TIERED_TAUNTS[cause];
+    if (causeTaunts && causeTaunts[tier]) {
+        const options = causeTaunts[tier];
+        return options[Math.floor(Math.random() * options.length)];
+    }
+
+    // Fallback: generic tiered
+    const genericTaunts = TIERED_TAUNTS.generic;
+    if (genericTaunts && genericTaunts[tier]) {
+        const options = genericTaunts[tier];
+        return options[Math.floor(Math.random() * options.length)];
+    }
+
+    // Legacy fallback
     return TAUNT_MESSAGES[Math.floor(Math.random() * TAUNT_MESSAGES.length)];
 }
 
@@ -175,6 +257,7 @@ export function updateDeathState(dt) {
     if (deathState.respawnTimer <= 0) {
         deathState.isDying = false;
         deathState.respawnTimer = 0;
+        clearCoyoteFrames();
         return 'respawn';
     }
 
@@ -201,4 +284,14 @@ export function drawTauntMessage(ctx) {
     drawPixelBorder(ctx, px, py, pw, ph, COLORS.UI_BORDER_L, COLORS.UI_BORDER_D, COLORS.UI_BG, 1);
     drawPixelText(ctx, deathState.tauntMsg, px + 6, py + 5, COLORS.UI_MUTED, 1);
     ctx.restore();
+}
+
+/**
+ * Get level clear judge message based on death count
+ */
+export function getLevelClearJudge(deathCount) {
+    for (const entry of LEVEL_CLEAR_JUDGE) {
+        if (deathCount <= entry.max) return entry.msg;
+    }
+    return LEVEL_CLEAR_JUDGE[LEVEL_CLEAR_JUDGE.length - 1].msg;
 }

@@ -17,23 +17,105 @@ Game được thiết kế theo nguyên tắc: **"Bẫy phải NHÌN THẤY đư
 
 Vì trò chơi sử dụng JavaScript Modules (`type="module"`), bạn **không thể** mở trực tiếp file `index.html` từ trình duyệt bằng cách click đúp. Bạn cần chạy một máy chủ local (local server).
 
-### Cách 1: Sử dụng VS Code (Khuyên dùng)
-1. Cài đặt extension **Live Server**.
-2. Chuột phải vào file `index.html` và chọn **Open with Live Server**.
+### 🖥️ Chạy Trên Local
 
-### Cách 2: Sử dụng NodeJS
-Nếu bạn đã cài đặt NodeJS, hãy chạy lệnh sau trong thư mục dự án:
+#### Cách 1: Sử dụng VS Code (Khuyên dùng)
+1. Cài đặt extension **Live Server** trong VS Code
+2. Chuột phải vào file `index.html` và chọn **Open with Live Server**
+3. Trình duyệt sẽ tự động mở game tại `http://localhost:5500`
+
+#### Cách 2: Sử dụng NodeJS
+Nếu bạn đã cài đặt NodeJS, chạy lệnh sau trong thư mục dự án:
 ```bash
 npx serve .
 ```
 Sau đó truy cập địa chỉ được cung cấp (thường là `http://localhost:3000`).
 
-### Cách 3: Chạy Tests
+#### Cách 3: Sử dụng Python
+Nếu bạn có Python đã cài đặt:
+
+**Python 3:**
+```bash
+python -m http.server 8000
+```
+
+**Python 2:**
+```bash
+python -m SimpleHTTPServer 8000
+```
+
+Sau đó truy cập `http://localhost:8000` trong trình duyệt.
+
+### 🧪 Chạy Tests
 Để chạy bộ test kiểm tra tính đúng đắn của game:
 ```bash
+# Cài đặt dependencies (chỉ cần chạy 1 lần)
 npm install
+
+# Chạy tất cả tests
 npm test
+
+# Chạy tests ở chế độ watch (tự động chạy lại khi có thay đổi)
+npm run test:watch
 ```
+
+### 🚀 Deploy Lên Wavedash
+
+Wavedash là nền tảng hosting game HTML5 miễn phí. Để deploy game lên Wavedash:
+
+#### Bước 1: Cài Đặt Wavedash CLI
+```bash
+# Cài đặt Wavedash CLI toàn cục
+npm install -g wavedash
+```
+
+#### Bước 2: Đăng Nhập Wavedash
+```bash
+# Đăng nhập vào tài khoản Wavedash của bạn
+wavedash login
+```
+
+#### Bước 3: Build Game
+Chạy script build để tạo thư mục `dist/` chứa các file game (không bao gồm tests và node_modules):
+
+**Trên Windows (PowerShell):**
+```powershell
+.\build.ps1
+```
+
+**Trên Linux/Mac:**
+```bash
+# Tạo script build.sh tương tự hoặc chạy thủ công:
+mkdir -p dist/css dist/js
+cp index.html dist/
+cp css/style.css dist/css/
+cp js/*.js dist/js/ --exclude="*.test.js" --exclude="*.integration.test.js"
+```
+
+#### Bước 4: Deploy
+```bash
+# Deploy game lên Wavedash
+wavedash deploy
+```
+
+Wavedash sẽ:
+- Đọc cấu hình từ `wavedash.toml`
+- Upload các file trong thư mục `dist/`
+- Cung cấp URL để chơi game online
+
+#### Cấu Hình Wavedash
+File `wavedash.toml` chứa cấu hình deploy:
+```toml
+game_id = "j974v1beb094kvdcrnbkv5y4s585938v"  # ID game của bạn
+upload_dir = "dist"                            # Thư mục chứa file build
+entrypoint = "index.html"                      # File khởi đầu
+```
+
+#### Lưu Ý Khi Deploy
+- ✅ Chỉ các file trong `dist/` được upload (không có tests, node_modules)
+- ✅ Game ID đã được cấu hình sẵn trong `wavedash.toml`
+- ✅ Luôn chạy `build.ps1` trước khi deploy để đảm bảo `dist/` được cập nhật
+- ⚠️ Nếu bạn thay đổi code, nhớ build lại trước khi deploy
 
 ---
 

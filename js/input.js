@@ -29,7 +29,7 @@ function normalize(e) {
 }
 
 export function initInput() {
-    window.addEventListener('keydown', (e) => {
+    function onKeyDown(e) {
         const k = normalize(e);
         if (!held[k]) pressed[k] = true;
         held[k] = true;
@@ -37,14 +37,20 @@ export function initInput() {
             || e.key.startsWith('Arrow')) {
             e.preventDefault();
         }
-    });
-    window.addEventListener('keyup', (e) => {
+    }
+    function onKeyUp(e) {
         const k = normalize(e);
         held[k] = false;
-    });
-    window.addEventListener('blur', () => {
+    }
+    function onBlur() {
         for (const k in held) held[k] = false;
-    });
+    }
+    // Listen on both window and document for iframe compatibility (Wavedash)
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keyup', onKeyUp);
 }
 
 export function isHeld(name) { return !!held[name]; }

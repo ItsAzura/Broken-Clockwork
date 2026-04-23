@@ -2,36 +2,122 @@
  * AutonomousObstacle.js
  * Always-moving obstacles that kill on contact.
  * Types: GEAR_SPINNER, PENDULUM, PISTON, BOUNCING_BALL, ORBIT_SPHERE
+ *
+ * Masocore additions:
+ *   - Hitbox shrink (visual unchanged, collision 2px smaller each side)
+ *   - Pattern Betrayal (orbit speed changes at betrayal time)
+ *   - Second Wind trap (invisible until triggered, 8s timer)
+ *   - Offbeat Piston (4-beat cycle with deceptive timing)
+ *   - Mercy hints (visual tells after repeated deaths)
+ *   - Speed tier coloring
  */
 
-import { AUTO, COLORS } from './constants.js';
+import {
+    AUTO, COLORS, HITBOX_SHRINK,
+    PATTERN_BETRAYAL_MULT,
+    SECOND_WIND_DURATION, SECOND_WIND_FADE_IN,
+    OFFBEAT_PISTON_CYCLE,
+} from './constants.js';
 import { drawPixelRect } from './draw.js';
-import { playPistonClunk } from './audio.js';
+import { playPistonClunk, playOffbeatPistonBeat } from './audio.js';
 
 export class AutonomousObstacle {
     constructor(data) {
         Object.assign(this, data);
-        this.time = Math.random() * 100;
+        this.time = data.initialTime !== undefined ? data.initialTime : (Math.random() * 100);
         this.speedMult = 1;
         this._wasNear = false;
         this._cachedBounds = null;
 
+        // Death tracking for mercy system
+        this.deathCount = 0;
+        this.showMercyHint = false;
+
+        // Speed tier color override (set by level data)
+        this.tierColor = data.tierColor || null;
+
         if (this.type === AUTO.BOUNCING_BALL) {
             this.vx = this.vx || 60;
             this.vy = this.vy || 60;
+            // Ghost trail length (increases with mercy)
+            this.ghostTrailFrames = data.ghostTrailFrames || 3;
         }
         if (this.type === AUTO.ORBIT_SPHERE) {
             this.angle = this.startAngle || 0;
         }
 
         this.isActive = this.initiallyActive !== false;
+
+        // ─── Pattern Betrayal (Troll 5) ───
+        this.patternBetrayal = data.patternBetrayal || false;
+        this.betrayalTime = data.betrayalTime || 6.0;
+        this.betrayalDuration = data.betrayalDuration || 2.4;
+        this.speedMultiplier = data.speedMultiplier || 1.15;
+        this._baseOrbitSpeed = this.orbitSpeed || 0;
+        this.currentSpeed = this._baseOrbitSpeed;
+
+        // ─── Second Wind Trap (Troll 6) ───
+        this.isSecondWind = data.isSecondWind || false;
+        this.secondWindTimer = 0;
+        this.secondWindAlpha = 0;
+        this.secondWindActive = false;
+        this.secondWindExpired = false;
+        if (this.isSecondWind) {
+            this.isActive = false;
+            this.secondWindAlpha = 0;
+        }
+
+        // ─── Offbeat Piston (Troll 2) ───
+        this.isOffbeat = data.isOffbeat || false;
+        this.offbeatCycle = data.offbeatCycle || OFFBEAT_PISTON_CYCLE;
+        this.offbeatMercyGlow = false;
+        this._offbeatPhase = 0;
+        this._prevOffbeatBeat = -1;
     }
 
     activate() {
         this.isActive = true;
     }
 
-    update(dt) {
+    // ─── Second Wind activation ───
+    activateSecondWind() {
+        if (this.secondWindExpired) return;
+        this.secondWindActive = true;
+        this.secondWindTimer = SECOND_WIND_DURATION;
+        this.secondWindAlpha = 0;
+        this.isActive = true;
+    }
+
+    // ─── Increment death count for mercy system ───
+    recordDeath(threshold) {
+        this.deathCount++;
+        if (this.deathCount >= threshold) {
+            this.showMercyHint = true;
+            // Bouncing ball: increase ghost trail
+            if (this.type === AUTO.BOUNCING_BALL) {
+                this.ghostTrailFrames = 6;
+            }
+        }
+    }
+
+    update(dt, roomTime) {
+        // Second Wind timer
+        if (this.isSecondWind && this.secondWindActive) {
+            // Fade in
+            if (this.secondWindAlpha < 1) {
+                this.secondWindAlpha = Math.min(1, this.secondWindAlpha + dt / SECOND_WIND_FADE_IN);
+            }
+            this.secondWindTimer -= dt;
+            if (this.secondWindTimer <= 0) {
+                // Expire permanently
+                this.secondWindActive = false;
+                this.secondWindExpired = true;
+                this.isActive = false;
+                this.secondWindAlpha = 0;
+                return;
+            }
+        }
+
         if (!this.isActive) return;
 
         const effectiveDt = dt * this.speedMult;
@@ -39,27 +125,73 @@ export class AutonomousObstacle {
         this.time += effectiveDt;
         this._cachedBounds = null; // Invalidate cache
 
+        // Pattern Betrayal: adjust orbit speed based on room time
+        if (this.patternBetrayal && this.type === AUTO.ORBIT_SPHERE && roomTime !== undefined) {
+            const inBetray = roomTime >= this.betrayalTime &&
+                             roomTime < this.betrayalTime + this.betrayalDuration;
+            this.currentSpeed = inBetray
+                ? this._baseOrbitSpeed * this.speedMultiplier
+                : this._baseOrbitSpeed;
+        }
+
         switch (this.type) {
             case AUTO.PISTON: {
-                // Store previous t value for direction change detection
-                const prevT = this._prevPistonT;
-                const t = (Math.sin(this.time * this.speed) + 1) / 2;
-                
-                // Detect direction change by checking if we crossed the peak (t=1) or valley (t=0)
-                if (prevT !== undefined) {
-                    // Direction change occurs when t crosses 0.5 in opposite direction
-                    const wasBelowHalf = prevT < 0.5;
-                    const isBelowHalf = t < 0.5;
-                    
-                    // If we crossed the midpoint, direction changed
-                    if (wasBelowHalf !== isBelowHalf) {
-                        playPistonClunk();
+                if (this.isOffbeat) {
+                    // ─── Offbeat Piston (Troll 2): 4-beat cycle ───
+                    this._offbeatPhase = (this.time % this.offbeatCycle) / this.offbeatCycle;
+                    const beat = Math.floor(this._offbeatPhase * 4);
+
+                    // Play beat-specific sound on beat change
+                    if (beat !== this._prevOffbeatBeat) {
+                        playOffbeatPistonBeat(beat);
+                        this._prevOffbeatBeat = beat;
                     }
+
+                    // 4-beat positions:
+                    //   beat 0: GAP OPEN (looks safe, but wrong window)
+                    //   beat 1: left extends (partial close)
+                    //   beat 2: fully CLOSED
+                    //   beat 3: left retracts (partial open) → true safe window at end
+                    let t;
+                    switch (beat) {
+                        case 0: t = 0.0; break;   // open (TRAP)
+                        case 1: t = 0.5; break;   // partial
+                        case 2: t = 1.0; break;   // closed
+                        case 3: t = 0.3; break;   // partial open → safe window at beat 3→0
+                        default: t = 0;
+                    }
+                    // Smooth interpolation within beat
+                    const beatProgress = (this._offbeatPhase * 4) - beat;
+                    const nextBeat = (beat + 1) % 4;
+                    let nextT;
+                    switch (nextBeat) {
+                        case 0: nextT = 0.0; break;
+                        case 1: nextT = 0.5; break;
+                        case 2: nextT = 1.0; break;
+                        case 3: nextT = 0.3; break;
+                        default: nextT = 0;
+                    }
+                    const smoothT = t + (nextT - t) * beatProgress;
+
+                    this.x = this.ax + (this.bx - this.ax) * smoothT;
+                    this.y = this.ay + (this.by - this.ay) * smoothT;
+                } else {
+                    // Standard piston
+                    const prevT = this._prevPistonT;
+                    const t = (Math.sin(this.time * this.speed) + 1) / 2;
+
+                    if (prevT !== undefined) {
+                        const wasBelowHalf = prevT < 0.5;
+                        const isBelowHalf = t < 0.5;
+                        if (wasBelowHalf !== isBelowHalf) {
+                            playPistonClunk();
+                        }
+                    }
+
+                    this._prevPistonT = t;
+                    this.x = this.ax + (this.bx - this.ax) * t;
+                    this.y = this.ay + (this.by - this.ay) * t;
                 }
-                
-                this._prevPistonT = t;
-                this.x = this.ax + (this.bx - this.ax) * t;
-                this.y = this.ay + (this.by - this.ay) * t;
                 break;
             }
             case AUTO.BOUNCING_BALL: {
@@ -76,7 +208,8 @@ export class AutonomousObstacle {
                 break;
             }
             case AUTO.ORBIT_SPHERE: {
-                this.angle += this.orbitSpeed * effectiveDt;
+                const speed = this.patternBetrayal ? this.currentSpeed : this.orbitSpeed;
+                this.angle += speed * effectiveDt;
                 break;
             }
         }
@@ -86,7 +219,9 @@ export class AutonomousObstacle {
         if (!this.isActive) return null;
         if (this._cachedBounds) return this._cachedBounds;
 
+        const shrink = HITBOX_SHRINK; // 2px each side — visual unchanged, hitbox forgiving
         let bounds = null;
+
         switch (this.type) {
             case AUTO.GEAR_SPINNER: {
                 const teeth = [];
@@ -96,7 +231,13 @@ export class AutonomousObstacle {
                     const a = angle + (i / toothCount) * Math.PI * 2;
                     const tx = this.x + Math.cos(a) * this.radius;
                     const ty = this.y + Math.sin(a) * this.radius;
-                    teeth.push({ x: tx - 2, y: ty - 2, w: 4, h: 4 });
+                    // Shrunk hitbox (4→4 minus 2 each side = effectively smaller)
+                    teeth.push({
+                        x: tx - 2 + shrink,
+                        y: ty - 2 + shrink,
+                        w: 4 - shrink * 2,
+                        h: 4 - shrink * 2,
+                    });
                 }
                 bounds = { type: 'multi', rects: teeth };
                 break;
@@ -106,22 +247,42 @@ export class AutonomousObstacle {
                 const tipX = this.x + Math.sin(angle) * this.length;
                 const tipY = this.y + Math.cos(angle) * this.length;
                 const r = this.tipRadius || 5;
-                bounds = { x: tipX - r, y: tipY - r, w: r * 2, h: r * 2 };
+                bounds = {
+                    x: tipX - r + shrink,
+                    y: tipY - r + shrink,
+                    w: r * 2 - shrink * 2,
+                    h: r * 2 - shrink * 2,
+                };
                 break;
             }
             case AUTO.PISTON: {
-                bounds = { x: this.x, y: this.y, w: this.w, h: this.h };
+                bounds = {
+                    x: this.x + shrink,
+                    y: this.y + shrink,
+                    w: this.w - shrink * 2,
+                    h: this.h - shrink * 2,
+                };
                 break;
             }
             case AUTO.BOUNCING_BALL: {
-                bounds = { x: this.x, y: this.y, w: this.r * 2, h: this.r * 2 };
+                bounds = {
+                    x: this.x + shrink,
+                    y: this.y + shrink,
+                    w: this.r * 2 - shrink * 2,
+                    h: this.r * 2 - shrink * 2,
+                };
                 break;
             }
             case AUTO.ORBIT_SPHERE: {
                 const ox = this.cx + Math.cos(this.angle) * this.orbitRadius;
                 const oy = this.cy + Math.sin(this.angle) * this.orbitRadius;
                 const r = this.sphereR || 3;
-                bounds = { x: ox - r, y: oy - r, w: r * 2, h: r * 2 };
+                bounds = {
+                    x: ox - r + shrink,
+                    y: oy - r + shrink,
+                    w: r * 2 - shrink * 2,
+                    h: r * 2 - shrink * 2,
+                };
                 break;
             }
         }
@@ -132,14 +293,23 @@ export class AutonomousObstacle {
     draw(ctx, camX, camY, tick) {
         if (!this.isActive) return;
 
+        // Second Wind: draw with alpha
+        if (this.isSecondWind && this.secondWindActive) {
+            ctx.save();
+            ctx.globalAlpha = this.secondWindAlpha;
+        }
+
         const sx = (this.x - camX) | 0;
         const sy = (this.y - camY) | 0;
+
+        // Determine draw color based on speed tier
+        const tierCol = this.tierColor || null;
 
         switch (this.type) {
             case AUTO.GEAR_SPINNER: {
                 const angle = this.time * this.rotationSpeed;
                 const toothCount = this.teeth || 6;
-                ctx.fillStyle = COLORS.METAL_MID;
+                ctx.fillStyle = tierCol || COLORS.METAL_MID;
                 for (let i = 0; i < toothCount; i++) {
                     const a = angle + (i / toothCount) * Math.PI * 2;
                     const tx = sx + Math.cos(a) * this.radius;
@@ -152,13 +322,26 @@ export class AutonomousObstacle {
                 ctx.beginPath();
                 ctx.arc(sx, sy, this.radius + 2, 0, Math.PI * 2);
                 ctx.fill();
+
+                // ─── Mercy hint: 1px gap highlight between teeth ───
+                if (this.showMercyHint) {
+                    for (let i = 0; i < toothCount; i++) {
+                        const a1 = angle + (i / toothCount) * Math.PI * 2;
+                        const a2 = angle + ((i + 1) / toothCount) * Math.PI * 2;
+                        const midA = (a1 + a2) / 2;
+                        const gapX = sx + Math.cos(midA) * this.radius;
+                        const gapY = sy + Math.sin(midA) * this.radius;
+                        ctx.fillStyle = `rgba(255,208,128,0.4)`; // GLOW_WARM alpha 0.4
+                        ctx.fillRect((gapX - 0.5) | 0, (gapY - 0.5) | 0, 1, 1);
+                    }
+                }
                 break;
             }
             case AUTO.PENDULUM: {
                 const angle = Math.sin(this.time * this.frequency) * this.amplitude;
                 const tipX = sx + Math.sin(angle) * this.length;
                 const tipY = sy + Math.cos(angle) * this.length;
-                ctx.strokeStyle = COLORS.METAL_MID;
+                ctx.strokeStyle = tierCol || COLORS.METAL_MID;
                 ctx.lineWidth = 2;
                 ctx.beginPath();
                 ctx.moveTo(sx, sy);
@@ -170,25 +353,45 @@ export class AutonomousObstacle {
                 ctx.fill();
                 ctx.fillStyle = COLORS.METAL_DARK;
                 ctx.fillRect(sx - 2, sy - 2, 4, 4);
-                ctx.strokeStyle = COLORS.DANGER_ZONE;
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                const leftAngle = -this.amplitude;
-                const rightAngle = this.amplitude;
-                const leftX = sx + Math.sin(leftAngle) * this.length;
-                const leftY = sy + Math.cos(leftAngle) * this.length;
-                const rightX = sx + Math.sin(rightAngle) * this.length;
-                const rightY = sy + Math.cos(rightAngle) * this.length;
-                ctx.moveTo(sx, sy);
-                ctx.lineTo(leftX, leftY);
-                ctx.moveTo(sx, sy);
-                ctx.lineTo(rightX, rightY);
-                ctx.stroke();
+
+                // ─── Mercy hint: 1px arc showing full swing range ───
+                if (this.showMercyHint) {
+                    ctx.strokeStyle = 'rgba(255,208,128,0.3)';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    const leftAngle = -this.amplitude;
+                    const rightAngle = this.amplitude;
+                    const steps = 20;
+                    for (let i = 0; i <= steps; i++) {
+                        const a = leftAngle + (rightAngle - leftAngle) * (i / steps);
+                        const px = sx + Math.sin(a) * this.length;
+                        const py = sy + Math.cos(a) * this.length;
+                        if (i === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    ctx.stroke();
+                } else {
+                    // Standard danger range lines
+                    ctx.strokeStyle = COLORS.DANGER_ZONE;
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    const leftAngle = -this.amplitude;
+                    const rightAngle = this.amplitude;
+                    const leftX = sx + Math.sin(leftAngle) * this.length;
+                    const leftY = sy + Math.cos(leftAngle) * this.length;
+                    const rightX = sx + Math.sin(rightAngle) * this.length;
+                    const rightY = sy + Math.cos(rightAngle) * this.length;
+                    ctx.moveTo(sx, sy);
+                    ctx.lineTo(leftX, leftY);
+                    ctx.moveTo(sx, sy);
+                    ctx.lineTo(rightX, rightY);
+                    ctx.stroke();
+                }
                 break;
             }
             case AUTO.PISTON: {
                 drawPixelRect(ctx, sx, sy, this.w, this.h, COLORS.GAUGE_LOW);
-                drawPixelRect(ctx, sx + 1, sy + 1, this.w - 2, this.h - 2, COLORS.METAL_MID);
+                drawPixelRect(ctx, sx + 1, sy + 1, this.w - 2, this.h - 2, tierCol || COLORS.METAL_MID);
                 const rangeY1 = (this.ay - camY) | 0;
                 const rangeY2 = (this.by - camY) | 0;
                 const rangeX1 = (this.ax - camX) | 0;
@@ -199,6 +402,29 @@ export class AutonomousObstacle {
                 ctx.moveTo(rangeX1 + this.w / 2, rangeY1 + this.h / 2);
                 ctx.lineTo(rangeX2 + this.w / 2, rangeY2 + this.h / 2);
                 ctx.stroke();
+
+                // ─── Mercy hint: faint dust at safe position ───
+                if (this.showMercyHint) {
+                    // Safe position is at ax, ay (fully retracted)
+                    const safeX = (this.ax - camX) | 0;
+                    const safeY = (this.ay - camY) | 0;
+                    ctx.fillStyle = 'rgba(255,208,128,0.3)';
+                    for (let i = 0; i < 3; i++) {
+                        const dx = (Math.sin(tick * 0.1 + i * 2) * 3) | 0;
+                        const dy = (Math.cos(tick * 0.1 + i * 1.7) * 2) | 0;
+                        ctx.fillRect(safeX + this.w / 2 + dx - 1, safeY + this.h / 2 + dy - 1, 2, 2);
+                    }
+                }
+
+                // ─── Offbeat mercy glow ───
+                if (this.isOffbeat && this.offbeatMercyGlow) {
+                    // Glow at the true safe position (beat 3→0 transition)
+                    const safeX = (this.ax - camX) | 0;
+                    const safeY = (this.ay - camY) | 0;
+                    const pulse = Math.abs(Math.sin(tick * 0.05));
+                    ctx.fillStyle = `rgba(255,208,128,${0.15 + pulse * 0.15})`;
+                    ctx.fillRect(safeX + this.w / 2 - 3, safeY + this.h / 2 - 3, 6, 6);
+                }
                 break;
             }
             case AUTO.BOUNCING_BALL: {
@@ -206,11 +432,13 @@ export class AutonomousObstacle {
                 ctx.beginPath();
                 ctx.arc(sx + this.r, sy + this.r, this.r, 0, Math.PI * 2);
                 ctx.fill();
-                for (let i = 1; i <= 3; i++) {
+                // Ghost trail (mercy increases from 3 to 6 frames)
+                const trailFrames = this.ghostTrailFrames || 3;
+                for (let i = 1; i <= trailFrames; i++) {
                     const prevX = this.x - this.vx * 0.016 * i;
                     const prevY = this.y - this.vy * 0.016 * i;
-                    const alpha = 0.3 - i * 0.08;
-                    ctx.fillStyle = `rgba(200,64,32,${alpha})`;
+                    const alpha = 0.3 - i * (0.3 / (trailFrames + 1));
+                    ctx.fillStyle = `rgba(200,64,32,${Math.max(0, alpha)})`;
                     ctx.beginPath();
                     ctx.arc((prevX - camX + this.r) | 0, (prevY - camY + this.r) | 0, this.r, 0, Math.PI * 2);
                     ctx.fill();
@@ -222,11 +450,22 @@ export class AutonomousObstacle {
                 const oy = this.cy + Math.sin(this.angle) * this.orbitRadius;
                 const osx = (ox - camX) | 0;
                 const osy = (oy - camY) | 0;
-                ctx.strokeStyle = COLORS.DANGER_ZONE;
-                ctx.lineWidth = 1;
-                ctx.beginPath();
-                ctx.arc((this.cx - camX) | 0, (this.cy - camY) | 0, this.orbitRadius, 0, Math.PI * 2);
-                ctx.stroke();
+
+                // ─── Mercy hint: faint arc showing full orbit ───
+                if (this.showMercyHint) {
+                    ctx.strokeStyle = 'rgba(255,208,128,0.25)';
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.arc((this.cx - camX) | 0, (this.cy - camY) | 0, this.orbitRadius, 0, Math.PI * 2);
+                    ctx.stroke();
+                } else {
+                    ctx.strokeStyle = COLORS.DANGER_ZONE;
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.arc((this.cx - camX) | 0, (this.cy - camY) | 0, this.orbitRadius, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
                 ctx.fillStyle = COLORS.GAUGE_LOW;
                 ctx.beginPath();
                 ctx.arc(osx, osy, this.sphereR || 3, 0, Math.PI * 2);
@@ -236,8 +475,15 @@ export class AutonomousObstacle {
                 break;
             }
         }
+
+        // Restore alpha if second wind
+        if (this.isSecondWind && this.secondWindActive) {
+            ctx.restore();
+        }
     }
 }
+
+// ═══════ COLLISION HELPERS ═══════
 
 export function rectOverlapsBounds(rect, bounds) {
     if (!bounds) return false;
