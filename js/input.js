@@ -32,6 +32,19 @@ const DEFAULT_KEY_ALIASES = {
     'Tab': 'DIFFICULTY', // Use Tab key for difficulty cycling
 };
 
+// ─── Touch Control Regions (320x180 canvas space) ───
+export const TOUCH_BUTTONS = {
+    LEFT:  { x: 5,   y: 135, w: 40, h: 40, action: 'LEFT' },
+    RIGHT: { x: 50,  y: 135, w: 40, h: 40, action: 'RIGHT' },
+    UP:    { x: 275, y: 135, w: 40, h: 40, action: 'UP' },
+    WIND:  { x: 230, y: 135, w: 40, h: 40, action: 'WIND' },
+    PAUSE: { x: 285, y: 5,   w: 30, h: 30, action: 'PAUSE' },
+    RETRY: { x: 250, y: 5,   w: 30, h: 30, action: 'RETRY' },
+};
+
+let touchActive = false;
+export function isTouchActive() { return touchActive; }
+
 // Active key aliases (includes remapped controls)
 let KEY_ALIASES = { ...DEFAULT_KEY_ALIASES };
 
@@ -71,10 +84,108 @@ export function initInput() {
     function onBlur() {
         for (const k in held) held[k] = false;
     }
+
+    function getCanvasCoords(touch, canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        return {
+            x: (touch.clientX - rect.left) * scaleX,
+            y: (touch.clientY - rect.top) * scaleY
+        };
+    }
+
+    function handleTouches(e) {
+        touchActive = true;
+        
+        // Only process if the touch is on the game canvas
+        const canvas = document.getElementById('game');
+        if (!canvas) return;
+        
+        // Check if touch target is the canvas
+        const target = e.target;
+        if (target !== canvas) return; // Let other elements handle their own touches
+
+        // Get current game state - use the actual state value, not window.gameState
+        // window.gameState is set in update() and may not be reliable during initialization
+        const currentState = window.gameState;
+        
+        // Only process virtual buttons when in PLAYING or LEVEL_EDITOR_PLAYTEST states
+        // For all other states (TITLE, PAUSED, SETTINGS, etc.), let main.js handlers work
+        const isPlayable = currentState === 'PLAYING' || currentState === 'LEVEL_EDITOR_PLAYTEST';
+        
+        // If not in playable state, don't process virtual buttons at all
+        // This allows menu touch handlers to work properly
+        if (!isPlayable) {
+            return; // Let the canvas touch handlers in main.js handle menu interactions
+        }
+        
+        // Track which buttons are pressed in this frame across all touches
+        const activeActions = new Set();
+        let hit = false;
+
+        // Use e.touches for touchstart/touchmove, e.changedTouches for touchend
+        const touchList = e.type === 'touchend' ? e.changedTouches : e.touches;
+        
+        for (let i = 0; i < touchList.length; i++) {
+            const coords = getCanvasCoords(touchList[i], canvas);
+            for (const btn of Object.values(TOUCH_BUTTONS)) {
+                if (coords.x >= btn.x && coords.x <= btn.x + btn.w &&
+                    coords.y >= btn.y && coords.y <= btn.y + btn.h) {
+                    activeActions.add(btn.action);
+                    hit = true;
+                }
+            }
+        }
+        
+        // Update held/pressed states based on active actions
+        // For touchend, we need to check remaining touches, not changedTouches
+        if (e.type === 'touchend') {
+            // On touchend, only keep actions that still have active touches
+            const remainingActions = new Set();
+            for (let i = 0; i < e.touches.length; i++) {
+                const coords = getCanvasCoords(e.touches[i], canvas);
+                for (const btn of Object.values(TOUCH_BUTTONS)) {
+                    if (coords.x >= btn.x && coords.x <= btn.x + btn.w &&
+                        coords.y >= btn.y && coords.y <= btn.y + btn.h) {
+                        remainingActions.add(btn.action);
+                    }
+                }
+            }
+            
+            for (const action of Object.keys(TOUCH_BUTTONS)) {
+                held[action] = remainingActions.has(action);
+            }
+        } else {
+            // For touchstart/touchmove, update normally
+            for (const action of Object.keys(TOUCH_BUTTONS)) {
+                const isActive = activeActions.has(action);
+                if (isActive && !held[action]) {
+                    pressed[action] = true;
+                }
+                held[action] = isActive;
+            }
+        }
+        
+        // Prevent default only if we hit a virtual button during gameplay
+        if (hit && e.cancelable) {
+            e.preventDefault();
+        }
+    }
+
     // Listen on window for broad coverage; document is redundant in most modern browsers
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', onBlur);
+
+    // Touch listeners on canvas only (not window) to avoid conflicts with menu handlers
+    // The canvas-specific touch handlers in main.js will handle menu interactions
+    const canvas = document.getElementById('game');
+    if (canvas) {
+        canvas.addEventListener('touchstart', handleTouches, { passive: false, capture: false });
+        canvas.addEventListener('touchmove', handleTouches, { passive: false, capture: false });
+        canvas.addEventListener('touchend', handleTouches, { passive: false, capture: false });
+    }
 }
 
 export function isHeld(name) { return !!held[name]; }

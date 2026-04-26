@@ -498,3 +498,44 @@ export function drawLethalZone(ctx, lz, camX, camY, tick) {
     }
 }
 
+/**
+ * Draw virtual touch controls for mobile play (Requirement 3 in Analysis)
+ */
+export function drawTouchControls(ctx, buttons, heldStateFunc) {
+    ctx.save();
+    for (const [key, btn] of Object.entries(buttons)) {
+        const isHeld = heldStateFunc(btn.action);
+        
+        // Button style: Semi-transparent dark background
+        ctx.globalAlpha = isHeld ? 0.8 : 0.4;
+        drawPixelBorder(
+            ctx, 
+            btn.x, btn.y, btn.w, btn.h, 
+            isHeld ? COLORS.GLOW_WARM : COLORS.METAL_LIGHT, 
+            COLORS.TILE_DARK, 
+            COLORS.UI_BG, 
+            1
+        );
+        
+        // Draw icon/text
+        let label = btn.action;
+        if (label === 'LEFT') label = '<';
+        else if (label === 'RIGHT') label = '>';
+        else if (label === 'UP') label = '^';
+        else if (label === 'WIND') label = 'W';
+        else if (label === 'PAUSE') label = 'P';
+        else if (label === 'RETRY') label = 'R';
+        
+        const tw = measurePixelText(label, 1);
+        drawPixelText(
+            ctx, 
+            label, 
+            (btn.x + (btn.w - tw) / 2) | 0, 
+            (btn.y + (btn.h - 8) / 2) | 0, 
+            isHeld ? COLORS.IVORY : COLORS.METAL_LIGHT, 
+            1
+        );
+    }
+    ctx.restore();
+}
+

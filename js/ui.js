@@ -1162,6 +1162,36 @@ export function drawPaused(ctx, tick, selectedOption = 0) {
   drawPixelText(ctx, hint, ((SCREEN_W - hintW) / 2) | 0, footerY, COLORS.UI_MUTED, 0.5);
 }
 
+export function getPauseMenuInteraction(x, y) {
+  const cardW = 200;
+  const cardH = 170;
+  const cardX = ((SCREEN_W - cardW) / 2) | 0;
+  const cardY = ((SCREEN_H - cardH) / 2) | 0;
+
+  // Check difficulty selector
+  const diffY = cardY + 28;
+  const diffH = 12;
+  if (y >= diffY && y <= diffY + diffH && x >= cardX && x <= cardX + cardW) {
+    return { type: 'difficulty', x: x };
+  }
+
+  // Check menu options
+  const menuOptions = 4;
+  const menuStartY = cardY + 55;
+  const menuLineH = 20;
+  const optW = 170;
+  const optX = ((SCREEN_W - optW) / 2) | 0;
+
+  for (let i = 0; i < menuOptions; i++) {
+    const optY = menuStartY + i * menuLineH;
+    if (x >= optX && x <= optX + optW && y >= optY - 4 && y <= optY + 14) {
+      return { type: 'menu', selection: i };
+    }
+  }
+
+  return null;
+}
+
 export function drawWindPrompt(ctx, target, camX, camY, tick) {
   if (!target) return;
   const cx = (target.centerX() - camX) | 0;
@@ -4063,4 +4093,28 @@ export function drawLoading(ctx, tick) {
   if (fillProgress > 0) {
     drawPixelRect(ctx, barX, barY, fillProgress | 0, barH, COLORS.GAUGE_FULL);
   }
+}
+
+export function getOnboardingDifficultyInteraction(x, y) {
+  const optionY = 60;
+  const optionSpacing = 35;
+  const panelW = 260;
+  const panelH = 28;
+  const panelX = ((SCREEN_W - panelW) / 2) | 0;
+
+  const difficulties = ['Casual', 'Normal', 'Hardcore'];
+  for (let i = 0; i < difficulties.length; i++) {
+    const optY = optionY + i * optionSpacing;
+    if (x >= panelX && x <= panelX + panelW && y >= optY && y <= optY + panelH) {
+      return { type: 'difficulty', selection: difficulties[i] };
+    }
+  }
+  return null;
+}
+
+export function getDailyChallengeInteraction(x, y) {
+  // Simple check for the large modifier panel or the "START" hint at bottom
+  if (y > SCREEN_H - 40) return { type: 'start' };
+  if (y > 40 && y < 140) return { type: 'start' }; // The modifier panel
+  return null;
 }

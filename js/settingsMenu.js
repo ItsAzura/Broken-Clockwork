@@ -197,6 +197,82 @@ export class SettingsMenu {
     }
     
     /**
+     * Handle pointer/touch interaction (Requirement 3 in Analysis)
+     */
+    handleClick(x, y) {
+        if (!this.active) return;
+        
+        const cardW = 280;
+        const cardH = 160;
+        const cardX = (SCREEN_W - cardW) / 2 | 0;
+        const cardY = (SCREEN_H - cardH) / 2 | 0;
+        
+        if (this.showConfirmReset) {
+            // Check buttons in confirmation dialog
+            const dialogW = 200;
+            const dialogH = 60;
+            const dialogX = (SCREEN_W - dialogW) / 2 | 0;
+            const dialogY = (SCREEN_H - dialogH) / 2 | 0;
+            const buttonY = dialogY + 38;
+            const buttonW = 70;
+            const buttonStartX = (SCREEN_W - (buttonW * 2 + 10)) / 2 | 0;
+            
+            if (y >= buttonY && y <= buttonY + 14) {
+                if (x >= buttonStartX && x <= buttonStartX + buttonW) {
+                    this.showConfirmReset = false; // Cancel
+                } else if (x >= buttonStartX + buttonW + 10 && x <= buttonStartX + buttonW * 2 + 10) {
+                    this.resetToDefaults();
+                    this.showConfirmReset = false;
+                }
+            }
+            return;
+        }
+
+        // Check tabs
+        const tabListW = 70;
+        if (x >= cardX + 5 && x <= cardX + 5 + tabListW) {
+            this.tabOrder.forEach((tab, i) => {
+                const tabY = cardY + 35 + i * 20;
+                if (y >= tabY - 2 && y <= tabY + 14) {
+                    this.currentTab = tab;
+                    this.currentTabIndex = i;
+                    this.selectedOption = 0;
+                }
+            });
+            return;
+        }
+
+        // Check options
+        const contentX = cardX + tabListW + 10;
+        const contentW = cardW - tabListW - 20;
+        if (x >= contentX && x <= contentX + contentW) {
+            const maxOptions = this.getMaxOptionsForCurrentTab();
+            for (let i = 0; i < maxOptions; i++) {
+                let optOffset = i * 15;
+                if (this.currentTab === TABS.AUDIO) optOffset = i * 30;
+                else if (this.currentTab === TABS.VIDEO) optOffset = i * 20;
+                else if (this.currentTab === TABS.CONTROLS) optOffset = i * 14;
+                
+                const optY = cardY + 35 + optOffset;
+                if (y >= optY && y <= optY + 14) {
+                    this.selectedOption = i;
+                    
+                    // Check if clicked on the left or right side for adjustment
+                    const valueW = 40; // Approximate width for value adjustment
+                    if (x >= contentX + contentW - valueW) {
+                        this.adjustSelectedOption(1);
+                    } else if (x >= contentX + contentW - valueW * 2) {
+                        this.adjustSelectedOption(-1);
+                    } else {
+                        this.toggleSelectedOption();
+                    }
+                    return;
+                }
+            }
+        }
+    }
+    
+    /**
      * Handle input for reset confirmation dialog
      */
     handleConfirmResetInput(keys) {

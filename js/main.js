@@ -52,6 +52,7 @@ import {
   drawExitDoorGlow,
   drawLethalZone,
   setAccessibilitySystem,
+  drawTouchControls,
 } from './draw.js';
 import {
   initAudio,
@@ -108,7 +109,7 @@ import {
   closeCallCheck,
 } from './player.js';
 import { updatePlayerPhysics, findNearestWindable } from './physics.js';
-import { initInput, isHeld, justPressed, clearPressed } from './input.js';
+import { initInput, isHeld, justPressed, clearPressed, isTouchActive, TOUCH_BUTTONS } from './input.js';
 import {
   drawHUD,
   drawTitle,
@@ -143,6 +144,9 @@ import {
   drawOnboardingDifficulty,
   drawOnboardingComplete,
   getTitleMenuInteraction,
+  getPauseMenuInteraction,
+  getOnboardingDifficultyInteraction,
+  getDailyChallengeInteraction,
 } from './ui.js';
 import { leaderboardSystem } from './leaderboardSystem.js';
 import { deathHeatmap } from './deathHeatmap.js';
@@ -198,6 +202,17 @@ import { difficultySystem } from './difficultySystem.js';
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
+// ─── YouTube Playables SDK Initialization ───
+let ytGame = null;
+try {
+  if (typeof window.ytgame !== 'undefined') {
+    ytGame = window.ytgame;
+    console.log('[YouTube SDK] SDK reference acquired');
+  }
+} catch (e) {
+  console.warn('[YouTube SDK] SDK initialization failed or not available:', e);
+}
+
 // Ensure focus for iframe environments (Wavedash)
 canvas.focus();
 document.addEventListener('click', () => {
@@ -210,25 +225,39 @@ document.addEventListener('pointerdown', () => {
 });
 
 function fitCanvas() {
-  const SCALE = Math.max(
-    1,
-    Math.min(
-      Math.floor(window.innerWidth / SCREEN_W),
-      Math.floor(window.innerHeight / SCREEN_H),
-    ),
-  );
+  const scaleX = window.innerWidth / SCREEN_W;
+  const scaleY = window.innerHeight / SCREEN_H;
+  const SCALE = Math.min(scaleX, scaleY);
+  
   canvas.width = SCREEN_W;
   canvas.height = SCREEN_H;
-  canvas.style.width = SCREEN_W * SCALE + 'px';
-  canvas.style.height = SCREEN_H * SCALE + 'px';
+  
+  // Use fractional scaling for CSS dimensions to fill viewport as much as possible
+  // while maintaining aspect ratio (Requirement 4 in Analysis)
+  canvas.style.width = (SCREEN_W * SCALE) + 'px';
+  canvas.style.height = (SCREEN_H * SCALE) + 'px';
+  
+  // Ensure the canvas stays centered
+  canvas.style.position = 'absolute';
+  canvas.style.left = '50%';
+  canvas.style.top = '50%';
+  canvas.style.transform = 'translate(-50%, -50%)';
+  
   canvas.style.imageRendering = 'pixelated';
+  canvas.style.touchAction = 'none'; // Critical for mobile to prevent browser handling of touches
   ctx.imageSmoothingEnabled = false;
 }
 window.addEventListener('resize', fitCanvas);
 fitCanvas();
-canvas.addEventListener('pointermove', handleTitlePointerMove);
-canvas.addEventListener('pointerleave', handleTitlePointerLeave);
-canvas.addEventListener('click', handleTitlePointerClick);
+canvas.addEventListener('pointermove', handlePointerMove);
+canvas.addEventListener('pointerleave', handlePointerLeave);
+canvas.addEventListener('pointerdown', handlePointerClick); // Use pointerdown for instant response on mobile
+
+// Add direct touch event listeners for better mobile compatibility
+// Use capture phase to ensure these run before input.js handlers
+// This allows menu interactions to work properly before virtual button processing
+canvas.addEventListener('touchstart', handleTouchClick, { passive: false, capture: true });
+canvas.addEventListener('touchmove', handleTouchMove, { passive: false, capture: true });
 
 const game = {
   state: STATES.LOADING,
@@ -310,6 +339,9 @@ const game = {
   lastStateChangeFrame: 0, // Frame counter for transition guard
   returnStateFromSettings: null, // State to return to after closing settings
 };
+
+// Initialize window.gameState immediately for touch input system
+window.gameState = game.state;
 
 // ─── Load speedrun data from save system (Requirement 6.7) ───
 try {
@@ -1250,11 +1282,19 @@ function updateTitlePointerRegion(event) {
     return null;
   }
 
-  const pointer = getCanvasPointerPosition(event);
-  if (!pointer) {
+  const rect = canvas.getBoundingClientRect();
+  const clientX = event.clientX ?? (event.touches?.[0]?.clientX);
+  const clientY = event.clientY ?? (event.touches?.[0]?.clientY);
+  
+  if (clientX === undefined || clientY === undefined) {
     game.titlePointerRegion = null;
     return null;
   }
+
+  const pointer = {
+    x: ((clientX - rect.left) / rect.width) * SCREEN_W,
+    y: ((clientY - rect.top) / rect.height) * SCREEN_H,
+  };
 
   const region = getTitleMenuInteraction(
     getTitleUIState(),
@@ -1270,36 +1310,232 @@ function updateTitlePointerRegion(event) {
   return region;
 }
 
-function handleTitlePointerMove(event) {
-  updateTitlePointerRegion(event);
+function handleTouchMove(event) {
+  // Handle touch move for menu hover states
+  if (game.state === STATES.TITLE) {
+    updateTitlePointerRegion(event);
+  }
 }
 
-function handleTitlePointerLeave() {
+function handleTouchClick(event) {
+  // Direct touch handler for menu interactions
+  // This ensures touch works even if pointer events fail
+  if (game.transition.active) return;
+  
+  const rect = canvas.getBoundingClientRect();
+  const touch = event.touches[0] || event.changedTouches[0];
+  if (!touch) return;
+  
+  const pointer = {
+    x: ((touch.clientX - rect.left) / rect.width) * SCREEN_W,
+    y: ((touch.clientY - rect.top) / rect.height) * SCREEN_H,
+  };
+
+  // Visual feedback for taps
+  if (typeof spawnSparks === 'function' && game.particles) {
+    spawnSparks(game.particles, pointer.x, pointer.y, 3, [COLORS.SPARK_1, COLORS.GLOW_WARM]);
+  }
+
+  // Handle menu interactions
+  if (game.state === STATES.TITLE) {
+    const region = getTitleMenuInteraction(getTitleUIState(), pointer.x, pointer.y);
+    if (region) {
+      event.preventDefault(); // Prevent default only if we handle it
+      event.stopPropagation(); // Stop propagation to prevent input.js from processing
+      if (region.type === 'menu') {
+        activateTitleMenuSelection(region.selection);
+      } else if (region.type === 'difficulty') {
+        difficultySystem.cycleDifficulty();
+      } else if (region.type === 'speedrun') {
+        toggleTitleSpeedrunMode();
+      }
+    }
+  } else if (game.state === STATES.PAUSED) {
+    const region = getPauseMenuInteraction(pointer.x, pointer.y);
+    if (region) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (region.type === 'menu') {
+        game.pauseMenuSelection = region.selection;
+        game.pauseMenuForceEnter = true;
+      } else if (region.type === 'difficulty') {
+        difficultySystem.cycleDifficulty();
+      }
+    }
+  } else if (game.state === STATES.SETTINGS) {
+    settingsMenu.handleClick(pointer.x, pointer.y);
+    event.preventDefault();
+    event.stopPropagation();
+  } else if (game.state === STATES.ONBOARDING_WELCOME) {
+    game.state = STATES.ONBOARDING_DIFFICULTY;
+    event.preventDefault();
+    event.stopPropagation();
+  } else if (game.state === STATES.ONBOARDING_DIFFICULTY) {
+    const region = getOnboardingDifficultyInteraction(pointer.x, pointer.y);
+    if (region && region.type === 'difficulty') {
+      event.preventDefault();
+      event.stopPropagation();
+      game.onboardingSelectedDifficulty = region.selection;
+      difficultySystem.setDifficulty(region.selection);
+      startTitleGame(false);
+    }
+  } else if (game.state === STATES.ONBOARDING_COMPLETE) {
+    event.preventDefault();
+    event.stopPropagation();
+    _advanceAfterLevelClear();
+  } else if (game.state === STATES.DAILY_CHALLENGE_MENU || game.state === STATES.DAILY_CHALLENGE_START) {
+    const region = getDailyChallengeInteraction(pointer.x, pointer.y);
+    if (region && region.type === 'start') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (game.state === STATES.DAILY_CHALLENGE_MENU) {
+        game.state = STATES.DAILY_CHALLENGE_START;
+      } else {
+        game.dailyChallengeForceStart = true;
+      }
+    }
+  } else if (game.state === STATES.DAILY_CHALLENGE_COMPLETE || game.state === STATES.DAILY_CHALLENGE_FAILED) {
+    event.preventDefault();
+    event.stopPropagation();
+    dailyChallengeSystem.removeModifiers(game);
+    game.dailyChallenge.active = false;
+    game.dailyChallenge.reverseControls = false;
+    game.state = STATES.TITLE;
+    stopMusic();
+    stopAmbientSounds();
+  } else if (game.state === STATES.GAME_OVER) {
+    event.preventDefault();
+    event.stopPropagation();
+    startTransition(1, () => {
+      loadLevel(game.level);
+      game.state = STATES.PLAYING;
+    });
+  } else if (game.state === STATES.LEVEL_CLEAR || game.state === STATES.HEATMAP) {
+    if (game.levelClearTimer >= LEVEL_CLEAR_HOLD || game.state === STATES.HEATMAP) {
+      event.preventDefault();
+      event.stopPropagation();
+      startTransition(1, () => {
+        _advanceAfterLevelClear();
+      });
+    }
+  }
+  // If we reach here and it's not a playable state, don't prevent default
+  // This allows the touch to potentially trigger other handlers
+}
+
+function handlePointerMove(event) {
+  if (game.state === STATES.TITLE) {
+    updateTitlePointerRegion(event);
+  }
+}
+
+function handlePointerLeave() {
   game.titlePointerRegion = null;
 }
 
-function handleTitlePointerClick(event) {
-  if (game.state !== STATES.TITLE || game.transition.active) return;
+function handlePointerClick(event) {
+  if (game.transition.active) return;
+  
+  // Robust coordinate extraction for both mouse and touch-based pointer events
+  const rect = canvas.getBoundingClientRect();
+  
+  // For pointer events, use event coordinates directly
+  // For touch events that bubble up, extract from touches array
+  let clientX, clientY;
+  
+  if (event.clientX !== undefined && event.clientY !== undefined) {
+    // Standard pointer/mouse event
+    clientX = event.clientX;
+    clientY = event.clientY;
+  } else if (event.touches && event.touches.length > 0) {
+    // Touch event
+    clientX = event.touches[0].clientX;
+    clientY = event.touches[0].clientY;
+  } else if (event.changedTouches && event.changedTouches.length > 0) {
+    // Touch end event
+    clientX = event.changedTouches[0].clientX;
+    clientY = event.changedTouches[0].clientY;
+  } else {
+    return; // No valid coordinates
+  }
+  
+  const pointer = {
+    x: ((clientX - rect.left) / rect.width) * SCREEN_W,
+    y: ((clientY - rect.top) / rect.height) * SCREEN_H,
+  };
 
-  const region = updateTitlePointerRegion(event);
-  if (!region) return;
-
-  if (region.type === 'menu') {
-    activateTitleMenuSelection(region.selection);
-    return;
+  // Provide visual feedback for taps (Requirement 17.2, 17.3)
+  if (typeof spawnSparks === 'function' && game.particles) {
+    spawnSparks(game.particles, pointer.x, pointer.y, 3, [COLORS.SPARK_1, COLORS.GLOW_WARM]);
   }
 
-  if (region.type === 'difficulty') {
-    const nextDifficulty = difficultySystem.cycleDifficulty();
-    console.log(
-      '[DifficultySystem] Title menu cycled difficulty:',
-      nextDifficulty,
-    );
-    return;
-  }
+  if (game.state === STATES.TITLE) {
+    const region = getTitleMenuInteraction(getTitleUIState(), pointer.x, pointer.y);
+    if (!region) return;
 
-  if (region.type === 'speedrun') {
-    toggleTitleSpeedrunMode();
+    if (region.type === 'menu') {
+      activateTitleMenuSelection(region.selection);
+    } else if (region.type === 'difficulty') {
+      difficultySystem.cycleDifficulty();
+    } else if (region.type === 'speedrun') {
+      toggleTitleSpeedrunMode();
+    }
+  } else if (game.state === STATES.PAUSED) {
+    const region = getPauseMenuInteraction(pointer.x, pointer.y);
+    if (!region) return;
+
+    if (region.type === 'menu') {
+      game.pauseMenuSelection = region.selection;
+      // Trigger the enter key logic for this selection
+      game.pauseMenuForceEnter = true; 
+    } else if (region.type === 'difficulty') {
+      difficultySystem.cycleDifficulty();
+    }
+  } else if (game.state === STATES.SETTINGS) {
+    settingsMenu.handleClick(pointer.x, pointer.y);
+  } else if (game.state === STATES.ONBOARDING_WELCOME) {
+    game.state = STATES.ONBOARDING_DIFFICULTY;
+  } else if (game.state === STATES.ONBOARDING_DIFFICULTY) {
+    const region = getOnboardingDifficultyInteraction(pointer.x, pointer.y);
+    if (region && region.type === 'difficulty') {
+      game.onboardingSelectedDifficulty = region.selection;
+      difficultySystem.setDifficulty(region.selection);
+      // Advance to tutorial
+      startTitleGame(false); 
+    }
+  } else if (game.state === STATES.ONBOARDING_COMPLETE) {
+    // Start Level 1
+    _advanceAfterLevelClear();
+  } else if (game.state === STATES.DAILY_CHALLENGE_MENU || game.state === STATES.DAILY_CHALLENGE_START) {
+    const region = getDailyChallengeInteraction(pointer.x, pointer.y);
+    if (region && region.type === 'start') {
+      if (game.state === STATES.DAILY_CHALLENGE_MENU) {
+        game.state = STATES.DAILY_CHALLENGE_START;
+      } else {
+        // Start the challenge (trigger logic from update)
+        game.dailyChallengeForceStart = true;
+      }
+    }
+  } else if (game.state === STATES.DAILY_CHALLENGE_COMPLETE || game.state === STATES.DAILY_CHALLENGE_FAILED) {
+    dailyChallengeSystem.removeModifiers(game);
+    game.dailyChallenge.active = false;
+    game.dailyChallenge.reverseControls = false;
+    game.state = STATES.TITLE;
+    stopMusic();
+    stopAmbientSounds();
+  } else if (game.state === STATES.GAME_OVER) {
+    // Click anywhere to retry if on mobile/touch
+    startTransition(1, () => {
+      loadLevel(game.level);
+      game.state = STATES.PLAYING;
+    });
+  } else if (game.state === STATES.LEVEL_CLEAR || game.state === STATES.HEATMAP) {
+    // Click anywhere to skip
+    if (game.levelClearTimer >= LEVEL_CLEAR_HOLD || game.state === STATES.HEATMAP) {
+      startTransition(1, () => {
+        _advanceAfterLevelClear();
+      });
+    }
   }
 }
 
@@ -1856,6 +2092,7 @@ function handleHiddenGearProximity() {
 }
 
 function update(dt) {
+  window.gameState = game.state; // Sync for input system
   game.tick++;
   game.gameTime += dt;
   game.messageTimer = Math.max(0, game.messageTimer - dt);
@@ -1911,6 +2148,17 @@ function update(dt) {
     // Log loading progress for debugging
     if (game.loadingTick === 1) {
       console.log('[LOADING] Game initialization started');
+      
+      // Signal first frame is ready for YouTube Playables (Requirement 2 in Analysis)
+      if (ytGame) {
+        try {
+          ytGame.game.firstFrameReady();
+          console.log('[YouTube SDK] firstFrameReady() called');
+        } catch (e) {
+          console.error('[YouTube SDK] firstFrameReady() failed:', e);
+        }
+      }
+      
       console.log('[LOADING] STATES defined:', typeof STATES !== 'undefined');
       console.log('[LOADING] LEVELS defined:', typeof LEVELS !== 'undefined');
       console.log('[LOADING] getLevel defined:', typeof getLevel !== 'undefined');
@@ -1937,6 +2185,16 @@ function update(dt) {
       }
       
       game.state = STATES.TITLE;
+      
+      // Signal game is fully ready and interactable for YouTube (Requirement 2 in Analysis)
+      if (ytGame) {
+        try {
+          ytGame.game.gameReady();
+          console.log('[YouTube SDK] gameReady() called');
+        } catch (e) {
+          console.error('[YouTube SDK] gameReady() failed:', e);
+        }
+      }
       
       // Initialize Wavedash SDK after game is ready
       try {
@@ -2766,7 +3024,8 @@ function update(dt) {
     }
 
     // Enter key activates selected option
-    const enterPressed = justPressed('SPACE') || justPressed('WIND');
+    const enterPressed = justPressed('SPACE') || justPressed('WIND') || game.pauseMenuForceEnter;
+    game.pauseMenuForceEnter = false;
     // Open settings menu from pause menu (Requirement 18.1)
     if (
       justPressed('SETTINGS') ||
@@ -2979,8 +3238,9 @@ function update(dt) {
     if (justPressed('PAUSE') || justPressed('RETRY')) {
       game.state = STATES.DAILY_CHALLENGE_MENU;
     }
-    if (justPressed('SPACE') && !game.transition.active) {
+    if ((justPressed('SPACE') || game.dailyChallengeForceStart) && !game.transition.active) {
       // Begin the actual challenge
+      game.dailyChallengeForceStart = false;
       initAudio();
       resumeAudio();
       startMusic();
@@ -3503,6 +3763,18 @@ function draw() {
         drawDailyChallengeHUD(ctx, game, dailyChallengeSystem, game.tick);
       }
     }
+
+    // ─── Draw touch controls if active (Requirement 3 in Analysis) ───
+    if (
+      isTouchActive() &&
+      game.state !== STATES.TITLE &&
+      game.state !== STATES.LOADING &&
+      game.state !== STATES.ONBOARDING_WELCOME &&
+      game.state !== STATES.ONBOARDING_DIFFICULTY
+    ) {
+      drawTouchControls(ctx, TOUCH_BUTTONS, isHeld);
+    }
+
     if (game.state === STATES.TITLE) {
       // Draw daily challenge menu on top of title if in that state
     }

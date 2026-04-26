@@ -18,8 +18,8 @@ const SAVE_DATA_VERSION = "1.0";
 // LocalStorage key for game data
 const SAVE_KEY = "broken_clockwork_save_data";
 
-// Maximum save data size (2MB, well under LocalStorage 5-10MB limit)
-const MAX_SAVE_SIZE = 2 * 1024 * 1024;
+// Maximum save data size (500KB for YouTube Playables compatibility)
+const MAX_SAVE_SIZE = 500 * 1024;
 
 // Warning threshold for LocalStorage usage (4MB - warn before 5MB limit)
 const LOCALSTORAGE_WARN_THRESHOLD = 4 * 1024 * 1024;
@@ -603,11 +603,11 @@ export class SaveSystem {
                 .filter(date => new Date(date).getTime() > thirtyDaysAgo);
         }
         
-        // Limit death locations per level
+        // Limit death locations per level to 200 (was 1000)
         for (const levelId in saveData.analytics.deathLocations) {
             const locations = saveData.analytics.deathLocations[levelId];
-            if (locations && locations.length > 1000) {
-                saveData.analytics.deathLocations[levelId] = locations.slice(-1000);
+            if (locations && locations.length > 200) {
+                saveData.analytics.deathLocations[levelId] = locations.slice(-200);
             }
         }
     }
