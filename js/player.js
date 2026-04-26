@@ -103,12 +103,16 @@ export function closeCallCheck(player, obstacles) {
     return results;
 }
 
-export function updatePlayer(player, dt, allowJump) {
+export function updatePlayer(player, dt, allowJump, game = null) {
     // 1. Horizontal Movement with Inertia
     let inputDir = 0;
     if (!player.isWindingUp) {
         if (isHeld('LEFT')) inputDir -= 1;
         if (isHeld('RIGHT')) inputDir += 1;
+        // ─── Daily Challenge: reverse_controls modifier (Requirement 9.5) ───
+        if (game && game.dailyChallenge && game.dailyChallenge.active && game.dailyChallenge.reverseControls) {
+            inputDir = -inputDir;
+        }
     }
 
     const gaugeFactor = 0.45 + 0.55 * (player.gauge / player.gaugeMax);
@@ -125,7 +129,8 @@ export function updatePlayer(player, dt, allowJump) {
         player.facing = inputDir;
 
         // ─── Continuous gauge drain while moving ───
-        player.gauge = Math.max(0, player.gauge - GAUGE_DRAIN_RATE * dt);
+        const drainRate = game.difficultyGaugeDrainRate || GAUGE_DRAIN_RATE;
+        player.gauge = Math.max(0, player.gauge - drainRate * dt);
     } else {
         // Apply friction
         const frictionAmount = FRICTION * dt;

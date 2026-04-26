@@ -10,6 +10,22 @@
     <div id="frame">
         <canvas id="game" tabindex="1"></canvas>
     </div>
+    <script>
+        // Enhanced error logging for module loading issues
+        window.addEventListener('error', function(e) {
+            console.error('[GLOBAL ERROR]', e.message, e.filename, e.lineno, e.colno);
+            if (e.message && e.message.includes('module')) {
+                console.error('[MODULE ERROR] This appears to be a module loading error');
+                console.error('[MODULE ERROR] Check that the server is serving .js files with correct MIME type');
+            }
+        });
+        
+        window.addEventListener('unhandledrejection', function(e) {
+            console.error('[UNHANDLED REJECTION]', e.reason);
+        });
+        
+        console.log('[INIT] Starting module load...');
+    </script>
     <script type="module" src="./js/main.js" onerror="
         console.error('[MODULE_LOAD] CRITICAL: Failed to load main.js module');
         console.error('[MODULE_LOAD] This may be due to:');

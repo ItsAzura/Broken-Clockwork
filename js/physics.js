@@ -8,9 +8,16 @@ import { TILE, GRAVITY, PLAYER_W, PLAYER_H, OBJ, FAN_FORCE } from './constants.j
 const SOLID_TILES = new Set(['W', 'F', 'D']);
 
 export function tileAt(tiles, tx, ty) {
-    if (ty < 0 || ty >= tiles.length) return 'W';
+    // Ensure ty is within bounds (Requirement: fall to death)
+    if (ty < 0 || ty >= tiles.length) return '.';
+    
     const row = tiles[ty];
-    if (!row || tx < 0 || tx >= row.length) return 'W';
+    // If row is missing for some reason, treat as air
+    if (!row) return '.';
+    
+    // Horizontal bounds: keep as wall to prevent walking off sides if not intended
+    if (tx < 0 || tx >= row.length) return 'W';
+    
     return row[tx];
 }
 

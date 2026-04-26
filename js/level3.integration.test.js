@@ -13,7 +13,7 @@ describe('Level 3: THE SENTINEL - Phase Shift Integration', () => {
   let phaseShiftObstacle;
 
   beforeEach(() => {
-    level = getLevel(2); // Level 3 is at index 2
+    level = getLevel(3); // Level 3 (tutorial is level 0)
     
     // Create a phase shift obstacle based on level config
     const pendulumConfig = level.autonomousObstacles.find(obs => obs.id === 'pendulum_right');

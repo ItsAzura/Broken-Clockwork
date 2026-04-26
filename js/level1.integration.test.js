@@ -16,7 +16,7 @@ describe('Level 1: FIRST TOCK - Trap Flow Integration', () => {
   let level;
 
   beforeEach(() => {
-    level = getLevel(0); // Level 1 is at index 0
+    level = getLevel(1); // Level 1 (tutorial is level 0)
   });
 
   describe('Trigger Tile → Obstacle Activation', () => {

@@ -12,7 +12,7 @@ describe('Level 4: THE CLOCK TOWER - Vertical Trap Integration', () => {
   let level;
 
   beforeEach(() => {
-    level = getLevel(3); // Level 4 is at index 3
+    level = getLevel(4); // Level 4 (tutorial is level 0)
   });
 
   describe('Trap configuration validation (Requirements 16.1-16.7)', () => {

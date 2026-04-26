@@ -13,7 +13,7 @@ describe('Level 5: HEART OF THE MACHINE - One Frame Window Integration', () => {
   let oneFrameWindow;
 
   beforeEach(() => {
-    level = getLevel(4); // Level 5 is at index 4
+    level = getLevel(5); // Level 5 (tutorial is level 0)
     oneFrameWindow = new OneFrameWindow(level.oneFrameWindows[0]);
   });
 
@@ -143,7 +143,7 @@ describe('Level 5: HEART OF THE MACHINE - Complete Trap Flow Integration', () =>
   let level;
 
   beforeEach(() => {
-    level = getLevel(4); // Level 5 is at index 4
+    level = getLevel(5); // Level 5 (tutorial is level 0)
   });
 
   describe('All 8 Trap Types Present (Requirements 17.1-17.8)', () => {

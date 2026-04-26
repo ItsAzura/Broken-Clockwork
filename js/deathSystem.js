@@ -83,14 +83,17 @@ export function isFreezing() {
  * Returns true if overlap is within forgiveness frames (should NOT die).
  * Returns false if overlap exceeds threshold (should die).
  */
-export function checkCoyoteOverlap(obstacleId) {
+export function checkCoyoteOverlap(obstacleId, gameState = null) {
     if (!obstacleId) return false; // No ID = no forgiveness
     const key = String(obstacleId);
     if (!(key in coyoteOverlapFrames)) {
         coyoteOverlapFrames[key] = 0;
     }
     coyoteOverlapFrames[key]++;
-    return coyoteOverlapFrames[key] <= COYOTE_DEATH_FRAMES;
+    
+    // Use difficulty-modified coyote frames if available, otherwise use default
+    const coyoteFrames = (gameState && gameState.difficultyCoyoteFrames) || COYOTE_DEATH_FRAMES;
+    return coyoteOverlapFrames[key] <= coyoteFrames;
 }
 
 /**

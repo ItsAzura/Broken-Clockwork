@@ -201,10 +201,41 @@ export class AutonomousObstacle {
                 const maxX = this.boundX + this.boundW - this.r * 2;
                 const minY = this.boundY;
                 const maxY = this.boundY + this.boundH - this.r * 2;
-                if (this.x <= minX) { this.x = minX; this.vx = Math.abs(this.vx); }
-                if (this.x >= maxX) { this.x = maxX; this.vx = -Math.abs(this.vx); }
-                if (this.y <= minY) { this.y = minY; this.vy = Math.abs(this.vy); }
-                if (this.y >= maxY) { this.y = maxY; this.vy = -Math.abs(this.vy); }
+                
+                // Track collisions for spark particles (Requirement 12.7)
+                let collided = false;
+                let collisionX = this.x + this.r;
+                let collisionY = this.y + this.r;
+                
+                if (this.x <= minX) { 
+                    this.x = minX; 
+                    this.vx = Math.abs(this.vx); 
+                    collided = true;
+                    collisionX = minX;
+                }
+                if (this.x >= maxX) { 
+                    this.x = maxX; 
+                    this.vx = -Math.abs(this.vx); 
+                    collided = true;
+                    collisionX = maxX + this.r * 2;
+                }
+                if (this.y <= minY) { 
+                    this.y = minY; 
+                    this.vy = Math.abs(this.vy); 
+                    collided = true;
+                    collisionY = minY;
+                }
+                if (this.y >= maxY) { 
+                    this.y = maxY; 
+                    this.vy = -Math.abs(this.vy); 
+                    collided = true;
+                    collisionY = maxY + this.r * 2;
+                }
+                
+                // Store collision info for particle spawning
+                if (collided) {
+                    this._lastCollision = { x: collisionX, y: collisionY, time: this.time };
+                }
                 break;
             }
             case AUTO.ORBIT_SPHERE: {
@@ -292,6 +323,8 @@ export class AutonomousObstacle {
 
     draw(ctx, camX, camY, tick) {
         if (!this.isActive) return;
+        // ─── Daily Challenge: invisible_obstacles modifier (Requirement 9.6) ───
+        if (this._dailyChallengeInvisible) return;
 
         // Second Wind: draw with alpha
         if (this.isSecondWind && this.secondWindActive) {

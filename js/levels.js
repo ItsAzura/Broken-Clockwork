@@ -16,6 +16,7 @@
  */
 
 import { OBJ, AUTO } from './constants.js';
+import { tutorialSystem } from './tutorialSystem.js';
 
 export const LEVELS = [
 
@@ -31,10 +32,10 @@ export const LEVELS = [
             'W..................W',
             'W..................W',
             'WFFFF.........FFFFFW',
-            'WWWWW.........WWWWWW',
-            'WWWWW.........WWWWWW',
-            'WWWWW.........WWWWWW',
-            'WWWWWWWWWWWWWWWWWWWW',
+            '....................',
+            '....................',
+            '....................',
+            '....................',
         ],
         objects: [
             { type: OBJ.PLATFORM_SLIDE, x: 72, y: 96, w: 24, h: 4, duration: 6, ax: 72, bx: 208 },
@@ -59,7 +60,7 @@ export const LEVELS = [
             { x: 200, y: 56 },
         ],
         lethalZones: [
-            { x: 80, y: 124, w: 144, h: 80 },
+            { x: 0, y: 120, w: 320, h: 100 },
         ],
         goalTrigger: { x: 272, y: 80, w: 16, h: 16 },
         // Trap system data
@@ -104,10 +105,10 @@ export const LEVELS = [
             'W............................W',
             'W............................W',
             'WFFFF.....................FFFW',
-            'WWWWW.....................WWWW',
-            'WWWWW.....................WWWW',
-            'WWWWW.....................WWWW',
-            'WWWWWWWWWWWWWWWWWWWWWWWWWWWWWW',
+            '..............................',
+            '..............................',
+            '..............................',
+            '..............................',
         ],
         objects: [
             { type: OBJ.PLATFORM_SLIDE, x: 80,  y: 112, w: 24, h: 4, duration: 6, ax: 80,  bx: 148 },
@@ -562,7 +563,14 @@ export const LEVELS = [
 ];
 
 export function getLevel(idx) {
-    return LEVELS[idx] || LEVELS[0];
+    // Handle tutorial level (Level 0)
+    if (idx === 0) {
+        return tutorialSystem.createTutorialLevel();
+    }
+    
+    // Regular levels (Level 1-5 are at indices 0-4 in LEVELS array)
+    const levelIndex = idx - 1;
+    return LEVELS[levelIndex] || LEVELS[0];
 }
 
 /**
