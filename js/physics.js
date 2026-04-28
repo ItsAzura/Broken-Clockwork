@@ -157,3 +157,57 @@ export function rideMovingPlatform(player, prevPlatformX) {
         if (Math.abs(dx) < 8) player.x += dx;
     }
 }
+
+export class SpatialHashGrid {
+    constructor(cellSize) {
+        this.cellSize = cellSize;
+        this.cells = new Map();
+    }
+
+    clear() {
+        this.cells.clear();
+    }
+
+    insert(obj, bounds) {
+        if (!bounds) bounds = obj.rect ? obj.rect() : (obj.getBounds ? obj.getBounds() : obj);
+        if (!bounds) return;
+        
+        const minX = Math.floor(bounds.x / this.cellSize);
+        const maxX = Math.floor((bounds.x + bounds.w) / this.cellSize);
+        const minY = Math.floor(bounds.y / this.cellSize);
+        const maxY = Math.floor((bounds.y + bounds.h) / this.cellSize);
+
+        for (let y = minY; y <= maxY; y++) {
+            for (let x = minX; x <= maxX; x++) {
+                const key = x + ',' + y;
+                if (!this.cells.has(key)) {
+                    this.cells.set(key, new Set());
+                }
+                this.cells.get(key).add(obj);
+            }
+        }
+    }
+
+    query(bounds, padding = 0) {
+        const result = new Set();
+        if (!bounds) return Array.from(result);
+        
+        const minX = Math.floor((bounds.x - padding) / this.cellSize);
+        const maxX = Math.floor((bounds.x + bounds.w + padding) / this.cellSize);
+        const minY = Math.floor((bounds.y - padding) / this.cellSize);
+        const maxY = Math.floor((bounds.y + bounds.h + padding) / this.cellSize);
+
+        for (let y = minY; y <= maxY; y++) {
+            for (let x = minX; x <= maxX; x++) {
+                const key = x + ',' + y;
+                const cell = this.cells.get(key);
+                if (cell) {
+                    for (const obj of cell) {
+                        result.add(obj);
+                    }
+                }
+            }
+        }
+        return Array.from(result);
+    }
+}

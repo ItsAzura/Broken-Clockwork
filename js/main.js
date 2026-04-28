@@ -108,7 +108,7 @@ import {
   nearMissCheck,
   closeCallCheck,
 } from './player.js';
-import { updatePlayerPhysics, findNearestWindable } from './physics.js';
+import { updatePlayerPhysics, findNearestWindable, SpatialHashGrid } from './physics.js';
 import { initInput, isHeld, justPressed, clearPressed, isTouchActive, TOUCH_BUTTONS } from './input.js';
 import {
   drawHUD,
@@ -1952,7 +1952,10 @@ function checkLethalCollisions() {
   // Track which obstacles are currently overlapping for coyote death system
   const currentlyOverlapping = new Set();
 
-  for (const a of game.autonomousObstacles) {
+  // Query spatial hash grid if available
+  const nearbyObstacles = game.spatialHash ? game.spatialHash.query(hit) : game.autonomousObstacles;
+
+  for (const a of nearbyObstacles) {
     const b = a.getBounds();
     if (rectOverlapsBounds(hit, b)) {
       // Generate unique ID for this obstacle (use id if available, otherwise use object reference)
@@ -2002,7 +2005,9 @@ function checkLethalCollisions() {
 }
 
 function handleNearMisses() {
-  const hits = nearMissCheck(game.player, game.autonomousObstacles);
+  const hitBox = getPlayerHitbox(game.player);
+  const nearbyObstacles = game.spatialHash ? game.spatialHash.query(hitBox, NEAR_MISS_DISTANCE) : game.autonomousObstacles;
+  const hits = nearMissCheck(game.player, nearbyObstacles);
   for (const a of hits) {
     playWindUp(0.35);
     spawnSparks(game.particles, game.player.x + 4, game.player.y + 6, 2, [
@@ -2030,7 +2035,9 @@ function handleCloseCall() {
       ? CLOSE_CALL_DISPLAY_FRAMES
       : 20;
 
-  for (const obstacle of game.autonomousObstacles) {
+  const nearbyObstacles = game.spatialHash ? game.spatialHash.query(hit, extremeDist > closeDist ? extremeDist : closeDist) : game.autonomousObstacles;
+
+  for (const obstacle of nearbyObstacles) {
     const bounds = obstacle.getBounds();
     if (!bounds) continue;
 
@@ -2651,6 +2658,13 @@ function update(dt) {
     updateObstaclePause(dt);
     for (const a of game.autonomousObstacles) a.update(dt, game.roomTime);
 
+    // ─── Update Spatial Hash Grid for collision optimization ───
+    if (!game.spatialHash) game.spatialHash = new SpatialHashGrid(64);
+    game.spatialHash.clear();
+    for (const a of game.autonomousObstacles) {
+      if (a.getBounds) game.spatialHash.insert(a, a.getBounds());
+    }
+
     // ─── Spawn spark particles on obstacle wall collisions (Requirement 12.7) ───
     for (const obs of game.autonomousObstacles) {
       if (obs._lastCollision && obs._lastCollision.time === obs.time) {
@@ -2937,7 +2951,10 @@ function update(dt) {
       y: game.player.y + PLAYER_H / 2,
     };
 
-    for (const obstacle of game.autonomousObstacles) {
+    const hitForMusic = getPlayerHitbox(game.player);
+    const nearbyMusicObstacles = game.spatialHash ? game.spatialHash.query(hitForMusic, 64) : game.autonomousObstacles;
+
+    for (const obstacle of nearbyMusicObstacles) {
       const dist = distanceToBounds(playerCenter, obstacle.getBounds());
       if (dist < minDistance) {
         minDistance = dist;
