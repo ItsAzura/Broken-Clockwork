@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "test": "vitest --run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build": "powershell ./build.ps1"
   },
   "devDependencies": {
     "vitest": "^1.0.0",

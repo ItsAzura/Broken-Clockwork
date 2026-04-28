@@ -18,6 +18,7 @@ import { saveSystem } from './saveSystem.js';
 import { difficultySystem } from './difficultySystem.js';
 import { accessibilitySystem } from './accessibilitySystem.js';
 import { getMusicVolume, getSFXVolume, setMusicVolume, setSFXVolume } from './audio.js';
+import { getDefaultKeyForAction } from './input.js';
 
 /**
  * Settings menu tabs
@@ -503,6 +504,39 @@ export class SettingsMenu {
         }
     }
     
+    /**
+     * Get remapped key for a display action name
+     */
+    getRemappedKey(displayAction) {
+        const actionMap = {
+            'Jump': 'UP',
+            'Wind': 'WIND',
+            'Left': 'LEFT',
+            'Right': 'RIGHT',
+            'Reset': 'RETRY'
+        };
+        
+        const internalAction = actionMap[displayAction] || displayAction.toUpperCase();
+        
+        // Check remapped controls from accessibility system
+        const remapped = this.settings.remappedControls[internalAction];
+        if (remapped) return remapped.toUpperCase();
+        
+        // Otherwise return default key from input system
+        const defaultKey = getDefaultKeyForAction(internalAction);
+        if (defaultKey) {
+            // Simplify common keys for display
+            if (defaultKey === 'ArrowUp') return 'UP';
+            if (defaultKey === 'ArrowLeft') return 'LEFT';
+            if (defaultKey === 'ArrowRight') return 'RIGHT';
+            if (defaultKey === 'ArrowDown') return 'DOWN';
+            if (defaultKey === ' ') return 'SPACE';
+            return defaultKey.toUpperCase();
+        }
+        
+        return 'DEF';
+    }
+
     /**
      * Draw the settings menu (Requirement 18.1, 18.2)
      */

@@ -59,6 +59,25 @@ npm test
 npm run test:watch
 ```
 
+### 🔄 Cập Nhật Thư Mục Build (dist)
+
+Sau khi bạn thực hiện các thay đổi trong code (thư mục `js/`, `css/`, v.v.), bạn cần cập nhật thư mục `dist/` để các thay đổi này có hiệu lực khi deploy hoặc chạy từ bản build:
+
+**Sử dụng npm (Khuyên dùng):**
+```bash
+npm run build
+```
+
+**Hoặc chạy trực tiếp script PowerShell:**
+```powershell
+.\build.ps1
+```
+
+Script này sẽ:
+1. Xóa thư mục `dist/` cũ.
+2. Tạo cấu trúc thư mục mới.
+3. Copy các file `index.html`, `css/` và toàn bộ logic game từ `js/` (loại bỏ các file test).
+
 ### 🚀 Deploy Lên Wavedash
 
 Wavedash là nền tảng hosting game HTML5 miễn phí. Để deploy game lên Wavedash:
