@@ -31,6 +31,7 @@ import { getLevelClearJudge } from './deathSystem.js';
 import { progressionSystem } from './progressionSystem.js';
 import { difficultySystem } from './difficultySystem.js';
 import { accessibilitySystem } from './accessibilitySystem.js';
+import { speedrunSystem } from './speedrunSystem.js';
 
 export function drawHUD(ctx, game) {
   const tick = game.tick;
@@ -861,7 +862,7 @@ function drawTitleFooterPanel(ctx, layout, hoverRegion, activeOption) {
 
   // Tooltip content (Dynamic hint line)
   const difficulty = difficultySystem.getDifficulty();
-  const speedrunEnabled = false; // TODO: get from state
+  const speedrunEnabled = speedrunSystem.isEnabled();
   const tooltip = getTitleTooltipContent(
     { hoverRegion },
     layout,

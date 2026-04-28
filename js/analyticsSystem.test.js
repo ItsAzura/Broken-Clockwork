@@ -48,14 +48,13 @@ describe('AnalyticsSystem', () => {
             expect(analytics.currentSession.startTime).toBeTruthy();
         });
         
-        it('should end a session and record length', () => {
+        it('should end a session and record length', async () => {
             analytics.startSession();
-            setTimeout(() => {
-                analytics.endSession();
-                expect(analytics.currentSession.active).toBe(false);
-                expect(analytics.sessionLengths.length).toBe(1);
-                expect(analytics.sessionLengths[0]).toBeGreaterThan(0);
-            }, 10);
+            await new Promise(resolve => setTimeout(resolve, 10));
+            analytics.endSession();
+            expect(analytics.currentSession.active).toBe(false);
+            expect(analytics.sessionLengths.length).toBe(1);
+            expect(analytics.sessionLengths[0]).toBeGreaterThan(0);
         });
         
         it('should calculate average session length', () => {
@@ -63,12 +62,11 @@ describe('AnalyticsSystem', () => {
             expect(analytics.getAverageSessionLength()).toBe(2000);
         });
         
-        it('should get current session length', () => {
+        it('should get current session length', async () => {
             analytics.startSession();
-            setTimeout(() => {
-                const length = analytics.getCurrentSessionLength();
-                expect(length).toBeGreaterThan(0);
-            }, 10);
+            await new Promise(resolve => setTimeout(resolve, 10));
+            const length = analytics.getCurrentSessionLength();
+            expect(length).toBeGreaterThan(0);
         });
     });
     

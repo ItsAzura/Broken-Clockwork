@@ -18,7 +18,7 @@ import { saveSystem } from './saveSystem.js';
 import { difficultySystem } from './difficultySystem.js';
 import { accessibilitySystem } from './accessibilitySystem.js';
 import { getMusicVolume, getSFXVolume, setMusicVolume, setSFXVolume } from './audio.js';
-import { getDefaultKeyForAction } from './input.js';
+import { getDefaultKeyForAction, applyRemappedControls } from './input.js';
 
 /**
  * Settings menu tabs
@@ -69,6 +69,9 @@ export class SettingsMenu {
         this.selectedOption = 0;
         this.showConfirmReset = false;
         this.confirmResetSelection = 0; // 0 = Cancel, 1 = Confirm
+        
+        this.isRemappingKey = false;
+        this.remappingActionDisplay = "";
         
         // Settings state (loaded from systems)
         this.settings = this.loadAllSettings();
@@ -123,6 +126,7 @@ export class SettingsMenu {
      */
     close() {
         this.active = false;
+        this.isRemappingKey = false;
         console.log('[SettingsMenu] Closed');
     }
     
@@ -138,6 +142,7 @@ export class SettingsMenu {
      */
     handleInput(keys) {
         if (!this.active) return;
+        if (this.isRemappingKey) return;
         
         // Handle reset confirmation dialog
         if (this.showConfirmReset) {
@@ -202,6 +207,7 @@ export class SettingsMenu {
      */
     handleClick(x, y) {
         if (!this.active) return;
+        if (this.isRemappingKey) return;
         
         const cardW = 280;
         const cardH = 160;
@@ -452,9 +458,44 @@ export class SettingsMenu {
      * Start key remapping for controls
      */
     startKeyRemapping() {
-        // TODO: Implement key remapping UI
-        // This would require capturing the next key press and assigning it to the selected action
-        console.log('[SettingsMenu] Key remapping not yet implemented');
+        const actions = ['Jump', 'Wind', 'Left', 'Right', 'Reset'];
+        const displayAction = actions[this.selectedOption];
+        const actionMap = {
+            'Jump': 'UP',
+            'Wind': 'WIND',
+            'Left': 'LEFT',
+            'Right': 'RIGHT',
+            'Reset': 'RETRY'
+        };
+        const internalAction = actionMap[displayAction] || displayAction.toUpperCase();
+        
+        this.isRemappingKey = true;
+        this.remappingActionDisplay = displayAction;
+        
+        const keyHandler = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const key = e.key;
+            if (key === 'Escape') {
+                this.isRemappingKey = false;
+            } else {
+                if (['Shift', 'Control', 'Alt', 'Meta'].includes(key)) return;
+                
+                accessibilitySystem.setRemappedControl(internalAction, key);
+                applyRemappedControls(accessibilitySystem.getAllRemappedControls());
+                
+                this.settings = this.loadAllSettings();
+                this.isRemappingKey = false;
+            }
+            window.removeEventListener('keydown', keyHandler, true);
+        };
+        
+        setTimeout(() => {
+            if (this.isRemappingKey) {
+                window.addEventListener('keydown', keyHandler, true);
+            }
+        }, 100);
     }
     
     /**
@@ -518,20 +559,18 @@ export class SettingsMenu {
         
         const internalAction = actionMap[displayAction] || displayAction.toUpperCase();
         
-        // Check remapped controls from accessibility system
+        // Get key to display (either remapped or default)
         const remapped = this.settings.remappedControls[internalAction];
-        if (remapped) return remapped.toUpperCase();
+        const keyToDisplay = remapped !== undefined ? remapped : getDefaultKeyForAction(internalAction);
         
-        // Otherwise return default key from input system
-        const defaultKey = getDefaultKeyForAction(internalAction);
-        if (defaultKey) {
+        if (keyToDisplay) {
             // Simplify common keys for display
-            if (defaultKey === 'ArrowUp') return 'UP';
-            if (defaultKey === 'ArrowLeft') return 'LEFT';
-            if (defaultKey === 'ArrowRight') return 'RIGHT';
-            if (defaultKey === 'ArrowDown') return 'DOWN';
-            if (defaultKey === ' ') return 'SPACE';
-            return defaultKey.toUpperCase();
+            if (keyToDisplay === 'ArrowUp') return 'UP';
+            if (keyToDisplay === 'ArrowLeft') return 'LEFT';
+            if (keyToDisplay === 'ArrowRight') return 'RIGHT';
+            if (keyToDisplay === 'ArrowDown') return 'DOWN';
+            if (keyToDisplay === ' ') return 'SPACE';
+            return keyToDisplay.toUpperCase();
         }
         
         return 'DEF';
@@ -614,6 +653,24 @@ export class SettingsMenu {
         const hints = 'TAB: SWITCH CATEGORY   ↑↓: NAVIGATE   ←→: ADJUST';
         const hw = measurePixelText(hints, 0.5);
         drawPixelText(ctx, hints, ((SCREEN_W - hw) / 2) | 0, cardY + cardH - 12, COLORS.UI_MUTED, 0.5);
+        
+        if (this.isRemappingKey) {
+            drawPixelRect(ctx, 0, 0, SCREEN_W, SCREEN_H, 'rgba(0,0,0,0.8)');
+            const mw = 220;
+            const mh = 60;
+            const mx = (SCREEN_W - mw) / 2 | 0;
+            const my = (SCREEN_H - mh) / 2 | 0;
+            
+            drawPixelBorder(ctx, mx, my, mw, mh, COLORS.GLOW_WARM, COLORS.UI_BORDER_D, COLORS.UI_BG, 2);
+            
+            const title = `PRESS KEY FOR ${this.remappingActionDisplay.toUpperCase()}`;
+            const tw = measurePixelText(title, 1);
+            drawPixelText(ctx, title, (SCREEN_W - tw) / 2 | 0, my + 20, COLORS.GLOW_WARM, 1);
+            
+            const hintCancel = "ESC TO CANCEL";
+            const hcw = measurePixelText(hintCancel, 0.5);
+            drawPixelText(ctx, hintCancel, (SCREEN_W - hcw) / 2 | 0, my + 40, COLORS.UI_MUTED, 0.5);
+        }
     }
     
     getTabLabel(tab) {
