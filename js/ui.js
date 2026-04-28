@@ -871,18 +871,36 @@ function drawTitleFooterPanel(ctx, layout, hoverRegion, activeOption) {
     speedrunEnabled,
   );
 
-  const tooltipX = layout.footerTooltip.x;
-  const tooltipY = layout.footerTooltip.y;
+  // Calculate available space for the hint to prevent overlap with stats
+  const footerRightEdge = layout.footerPanel.x + layout.footerPanel.w - 8;
+  const statsRightEdge = statX + 16; // statX is where the last stat ended + padding
+  const maxHintWidth = footerRightEdge - statsRightEdge;
 
   // Draw tooltip title (active region) or helpful hint
-  const hintText = hoverRegion ? `${tooltip.title}: ${tooltip.lines[0]}` : 'Hover options for details · ESC to exit';
+  let hintText = hoverRegion 
+    ? `${tooltip.title}: ${tooltip.lines[0]}` 
+    : 'Hover options for details · ESC to exit';
+  
+  // Ellipsize if it's too long for the remaining space
+  if (measurePixelText(hintText, 1) > maxHintWidth) {
+    // If it's still too long, try just the line without the title if hovered
+    if (hoverRegion && tooltip.lines && tooltip.lines.length > 0) {
+      hintText = tooltip.lines[0];
+      if (measurePixelText(hintText, 1) > maxHintWidth) {
+        hintText = ellipsizePixelText(hintText, maxHintWidth, 1);
+      }
+    } else {
+      hintText = ellipsizePixelText(hintText, maxHintWidth, 1);
+    }
+  }
+
   const hintW = measurePixelText(hintText, 1);
   
   // Right-aligned hint text
   drawPixelText(
     ctx,
     hintText,
-    layout.footerPanel.x + layout.footerPanel.w - hintW - 8,
+    footerRightEdge - hintW,
     statY,
     hoverRegion ? TITLE_MENU_COLORS.highlight : TITLE_MENU_COLORS.muted,
     1,
