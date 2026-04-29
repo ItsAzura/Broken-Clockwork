@@ -1,38 +1,38 @@
 # BROKEN CLOCKWORK
 
-**Broken Clockwork** là một trò chơi giải đố nền tảng (puzzle-platformer) mang phong cách steampunk với thiết kế "troll" lấy cảm hứng từ "World's Hardest Game". Bạn điều khiển nhân vật chính sử dụng một chiếc chìa khóa lên dây cót để kích hoạt máy móc và vượt qua các thử thách đầy lừa dối tâm lý.
+**Broken Clockwork** is a steampunk puzzle-platformer with a "troll" design inspired by "World's Hardest Game." You control the main character using a wind-up key to activate machinery and overcome psychologically deceptive challenges.
 
-## 🎯 Triết Lý Thiết Kế
+## 🎯 Design Philosophy
 
-Game được thiết kế theo nguyên tắc: **"Bẫy phải NHÌN THẤY được khi nhìn lại. Người chơi chết và ngay lập tức hiểu tại sao — nhưng không bao giờ thấy trước được lần đầu tiên."**
+The game is designed according to the principle: **"The trap must be VISIBLE in hindsight. The player dies and immediately understands why — but never saw it coming the first time."**
 
-Độ khó không đến từ phản xạ hay kỹ năng, mà từ **sự lừa dối về mặt tâm lý**:
-- Khu vực trông an toàn nhưng lại nguy hiểm
-- Đường rộng trông dễ đi nhưng lại khó hơn đường hẹp
-- Bánh răng trang trí có thể giết bạn
-- Chuyển động đối xứng nhưng có độ lệch pha
-- Chướng ngại vật tăng tốc âm thầm sau mỗi 3 lần chết
+The difficulty comes not from reflexes or skill, but from **psychological deception**:
+- Areas that look safe but are dangerous
+- Wide paths that look easy to navigate but are harder than narrow ones
+- Decorative gears that can kill you
+- Symmetrical movements with a phase shift
+- Obstacles that silently speed up after every 3 deaths
 
-## ⚙️ Cách Khởi Chạy Trò Chơi
+## ⚙️ How to Launch the Game
 
-Vì trò chơi sử dụng JavaScript Modules (`type="module"`), bạn **không thể** mở trực tiếp file `index.html` từ trình duyệt bằng cách click đúp. Bạn cần chạy một máy chủ local (local server).
+Since the game uses JavaScript Modules (`type="module"`), you **cannot** open the `index.html` file directly from your browser by double-clicking. You need to run a local server.
 
-### 🖥️ Chạy Trên Local
+### 🖥️ Running Locally
 
-#### Cách 1: Sử dụng VS Code (Khuyên dùng)
-1. Cài đặt extension **Live Server** trong VS Code
-2. Chuột phải vào file `index.html` và chọn **Open with Live Server**
-3. Trình duyệt sẽ tự động mở game tại `http://localhost:5500`
+#### Option 1: Using VS Code (Recommended)
+1. Install the **Live Server** extension in VS Code.
+2. Right-click on the `index.html` file and select **Open with Live Server**.
+3. The browser will automatically open the game at `http://localhost:5500`.
 
-#### Cách 2: Sử dụng NodeJS
-Nếu bạn đã cài đặt NodeJS, chạy lệnh sau trong thư mục dự án:
+#### Option 2: Using NodeJS
+If you have NodeJS installed, run the following command in the project directory:
 ```bash
 npx serve .
 ```
-Sau đó truy cập địa chỉ được cung cấp (thường là `http://localhost:3000`).
+Then access the provided address (usually `http://localhost:3000`).
 
-#### Cách 3: Sử dụng Python
-Nếu bạn có Python đã cài đặt:
+#### Option 3: Using Python
+If you have Python installed:
 
 **Python 3:**
 ```bash
@@ -44,234 +44,234 @@ python -m http.server 8000
 python -m SimpleHTTPServer 8000
 ```
 
-Sau đó truy cập `http://localhost:8000` trong trình duyệt.
+Then access `http://localhost:8000` in your browser.
 
-### 🧪 Chạy Tests
-Để chạy bộ test kiểm tra tính đúng đắn của game:
+### 🧪 Running Tests
+To run the test suite to verify game correctness:
 ```bash
-# Cài đặt dependencies (chỉ cần chạy 1 lần)
+# Install dependencies (only need to run once)
 npm install
 
-# Chạy tất cả tests
+# Run all tests
 npm test
 
-# Chạy tests ở chế độ watch (tự động chạy lại khi có thay đổi)
+# Run tests in watch mode (automatically restarts on changes)
 npm run test:watch
 ```
 
-### 🔄 Cập Nhật Thư Mục Build (dist)
+### 🔄 Updating the Build Directory (dist)
 
-Sau khi bạn thực hiện các thay đổi trong code (thư mục `js/`, `css/`, v.v.), bạn cần cập nhật thư mục `dist/` để các thay đổi này có hiệu lực khi deploy hoặc chạy từ bản build:
+After making changes to the code (`js/`, `css/`, etc.), you need to update the `dist/` directory for these changes to take effect when deploying or running from the build:
 
-**Sử dụng npm (Khuyên dùng):**
+**Using npm (Recommended):**
 ```bash
 npm run build
 ```
 
-**Hoặc chạy trực tiếp script PowerShell:**
+**Or run the PowerShell script directly:**
 ```powershell
 .\build.ps1
 ```
 
-Script này sẽ:
-1. Xóa thư mục `dist/` cũ.
-2. Tạo cấu trúc thư mục mới.
-3. Copy các file `index.html`, `css/` và toàn bộ logic game từ `js/` (loại bỏ các file test).
+This script will:
+1. Delete the old `dist/` directory.
+2. Create a new directory structure.
+3. Copy `index.html`, `css/`, and all game logic from `js/` (excluding test files).
 
-### 🚀 Deploy Lên Wavedash
+### 🚀 Deploying to Wavedash
 
-Wavedash là nền tảng hosting game HTML5 miễn phí. Để deploy game lên Wavedash:
+Wavedash is a free HTML5 game hosting platform. To deploy the game to Wavedash:
 
-#### Bước 1: Cài Đặt Wavedash CLI
+#### Step 1: Install Wavedash CLI
 ```bash
-# Cài đặt Wavedash CLI toàn cục
+# Install Wavedash CLI globally
 npm install -g wavedash
 ```
 
-#### Bước 2: Đăng Nhập Wavedash
+#### Step 2: Log in to Wavedash
 ```bash
-# Đăng nhập vào tài khoản Wavedash của bạn
+# Log in to your Wavedash account
 wavedash login
 ```
 
-#### Bước 3: Build Game
-Chạy script build để tạo thư mục `dist/` chứa các file game (không bao gồm tests và node_modules):
+#### Step 3: Build the Game
+Run the build script to create the `dist/` directory containing game files (excluding tests and node_modules):
 
-**Trên Windows (PowerShell):**
+**On Windows (PowerShell):**
 ```powershell
 .\build.ps1
 ```
 
-**Trên Linux/Mac:**
+**On Linux/Mac:**
 ```bash
-# Tạo script build.sh tương tự hoặc chạy thủ công:
+# Create a similar build.sh script or run manually:
 mkdir -p dist/css dist/js
 cp index.html dist/
 cp css/style.css dist/css/
 cp js/*.js dist/js/ --exclude="*.test.js" --exclude="*.integration.test.js"
 ```
 
-#### Bước 4: Deploy
+#### Step 4: Deploy
 ```bash
-# Deploy game lên Wavedash
+# Deploy game to Wavedash
 wavedash deploy
 ```
 
-Wavedash sẽ:
-- Đọc cấu hình từ `wavedash.toml`
-- Upload các file trong thư mục `dist/`
-- Cung cấp URL để chơi game online
+Wavedash will:
+- Read configuration from `wavedash.toml`
+- Upload files in the `dist/` directory
+- Provide a URL to play the game online
 
-#### Cấu Hình Wavedash
-File `wavedash.toml` chứa cấu hình deploy:
+#### Wavedash Configuration
+The `wavedash.toml` file contains the deployment configuration:
 ```toml
-game_id = "j974v1beb094kvdcrnbkv5y4s585938v"  # ID game của bạn
-upload_dir = "dist"                            # Thư mục chứa file build
-entrypoint = "index.html"                      # File khởi đầu
+game_id = "j974v1beb094kvdcrnbkv5y4s585938v"  # Your game ID
+upload_dir = "dist"                            # Directory containing build files
+entrypoint = "index.html"                      # Entry point file
 ```
 
-#### Lưu Ý Khi Deploy
-- ✅ Chỉ các file trong `dist/` được upload (không có tests, node_modules)
-- ✅ Game ID đã được cấu hình sẵn trong `wavedash.toml`
-- ✅ Luôn chạy `build.ps1` trước khi deploy để đảm bảo `dist/` được cập nhật
-- ⚠️ Nếu bạn thay đổi code, nhớ build lại trước khi deploy
+#### Deployment Notes
+- ✅ Only files in `dist/` are uploaded (no tests, node_modules).
+- ✅ Game ID is pre-configured in `wavedash.toml`.
+- ✅ Always run `build.ps1` before deploying to ensure `dist/` is updated.
+- ⚠️ If you change the code, remember to rebuild before deploying.
 
 ---
 
-## 🎮 Điều Khiển
+## 🎮 Controls
 
-| Phím | Hành động |
+| Key | Action |
 |------|-----------|
-| **W, A, S, D** hoặc **Phím mũi tên** | Di chuyển / Nhảy |
-| **Space** hoặc **Enter** | Nhảy / Xác nhận |
-| **E** | Lên dây cót (Wind up) máy móc |
-| **P** hoặc **Esc** | Tạm dừng (Pause) |
-| **R** | Thử lại (Retry) |
+| **W, A, S, D** or **Arrow Keys** | Move / Jump |
+| **Space** or **Enter** | Jump / Confirm |
+| **E** | Wind up machinery |
+| **P** or **Esc** | Pause |
+| **R** | Retry |
 
 ---
 
-## 🛠️ Cơ Chế Trò Chơi Cơ Bản
+## 🛠️ Core Game Mechanics
 
-- **Lên dây cót:** Thế giới xung quanh bạn đã ngừng hoạt động. Bạn phải sử dụng chìa khóa của mình để nạp năng lượng cho các nền tảng di động, quạt gió, thang máy và các thiết bị khác.
-- **Thanh năng lượng (Gauge):** Việc lên dây cót sẽ tiêu tốn năng lượng. Hãy quản lý tài nguyên của bạn thật tốt để không bị mắc kẹt.
-- **Thu thập bánh răng:** Mỗi màn có các bánh răng cần thu thập để mở cửa thoát.
-- **Vượt chướng ngại vật:** Sử dụng sự khéo léo và tư duy logic để kích hoạt các cỗ máy đúng lúc, tạo lối đi tới đích.
-
----
-
-## 🎭 8 Loại Bẫy Troll
-
-### 1. **Trigger Tiles (Ô Kích Hoạt Ẩn)**
-- **Cách hoạt động:** Ô sàn vô hình kích hoạt chướng ngại vật khi bạn bước lên
-- **Âm thanh:** Tiếng "kích hoạt" khi bẫy được kích hoạt
-- **Lời chế giễu khi chết:** "YOU TRIGGERED THAT.", "WATCH YOUR STEP."
-
-### 2. **FAKE_SAFE_ZONE (Vùng An Toàn Giả)**
-- **Cách hoạt động:** Khu vực trông an toàn nhưng chướng ngại vật sẽ lao vào sau 1-2 giây
-- **Đặc điểm:** Trông giống hệt vùng an toàn thật
-- **Lời chế giễu:** "THAT WASN'T SAFE.", "NOWHERE IS SAFE.", "THE SAFE ZONE LIED."
-
-### 3. **TROLL_TOKEN (Bánh Răng Bẫy)**
-Có 3 loại phụ:
-
-#### a) ONE_WAY_PRISON (Nhà Tù Một Chiều)
-- **Cách hoạt động:** Khi nhặt bánh răng, chướng ngại vật chặn đường quay lại
-- **Hiệu ứng:** Bạn bị mắc kẹt, không thể quay đầu
-
-#### b) RUSH_BAIT (Mồi Nhử Tốc Độ)
-- **Cách hoạt động:** Khi nhặt bánh răng, tốc độ chướng ngại vật tăng 30-40%
-- **Hiệu ứng:** Mọi thứ di chuyển nhanh hơn đột ngột
-
-#### c) WIND_TRAP (Bẫy Sinh Quái)
-- **Cách hoạt động:** Khi nhặt bánh răng, sinh thêm chướng ngại vật gần bạn
-- **Hiệu ứng:** Quả bóng hoặc vật thể nguy hiểm xuất hiện bất ngờ
-
-**Lời chế giễu chung:** "GREED KILLS.", "SHOULD'VE LEFT IT.", "THAT WAS A TRAP. OBVIOUSLY."
-
-**UI đặc biệt:** Liar Counter (Bộ đếm nói dối) - Hiển thị số bánh răng sai trong 0.5 giây
-
-### 4. **HIDDEN_KILL_GEAR (Bánh Răng Giết Người Ẩn)**
-- **Cách hoạt động:** Giữa nhiều bánh răng trang trí, có 1 cái có hitbox gây chết
-- **Âm thanh:** Tiếng "hum" nhỏ khi ở gần (càng gần càng to)
-- **Đặc điểm:** Trông giống hệt bánh răng trang trí bình thường
-- **Lời chế giễu:** "THAT ONE WAS REAL.", "NOT ALL GEARS ARE DECORATIVE.", "TRUST NOTHING."
-
-### 5. **BAIT_PATH (Đường Mồi Nhử)**
-- **Cách hoạt động:** Đường rộng trông dễ đi nhưng có NHIỀU chướng ngại vật hơn đường hẹp
-- **Tâm lý:** Người chơi thường chọn đường rộng vì nghĩ nó an toàn hơn
-- **Lời chế giễu:** "THE EASY PATH IS NEVER EASY.", "WIDE ROADS, NARROW CHANCES."
-
-### 6. **ONE_FRAME_WINDOW (Cửa Sổ Một Khung Hình)**
-- **Cách hoạt động:** Khoảng trống giữa các piston/pendulum chỉ có 0.1 giây hoặc ít hơn
-- **Đặc điểm:** Có thể vượt qua được nhưng cần timing cực kỳ chính xác
-- **Xuất hiện:** Chủ yếu ở Level 5 (HEART OF THE MACHINE)
-
-### 7. **PHASE_SHIFT_OBSTACLE (Chướng Ngại Vật Dịch Pha)**
-- **Cách hoạt động:** Tốc độ tăng 10% sau mỗi 3 lần chết
-- **Đặc điểm:** Sự thay đổi rất tinh tế, khó nhận ra
-- **Reset:** Tốc độ trở về bình thường khi reload màn
-- **Xuất hiện:** Level 3, 4, 5
-
-### 8. **ALMOST_MOMENT (Khoảnh Khắc Gần Thành Công)**
-- **Cách hoạt động:** Khi nhặt bánh răng cuối cùng, chướng ngại vật chặn lối thoát
-- **Âm thanh:** Tiếng "buzz" giả mạo của cửa thoát
-- **Tâm lý:** Tạo căng thẳng ở thời điểm sắp chiến thắng
-- **Lời chế giễu:** "SO CLOSE.", "VICTORY WAS RIGHT THERE.", "ALMOST DOESN'T COUNT."
-
-### 9. **MIRROR_CORRIDOR (Hành Lang Gương)**
-- **Cách hoạt động:** Hai chướng ngại vật trông đối xứng nhưng có độ lệch pha (phase offset)
-- **Đặc điểm:** Chuyển động trông giống nhau nhưng timing khác nhau
-- **Tâm lý:** Người chơi nghĩ chúng đồng bộ và dự đoán sai
-- **Xuất hiện:** Level 2, 3, 4, 5
+- **Wind up:** The world around you has stopped working. You must use your key to power mobile platforms, fans, elevators, and other devices.
+- **Energy Gauge:** Winding up consumes energy. Manage your resources well so you don't get stuck.
+- **Collect Gears:** Each level has gears to collect to open the exit door.
+- **Overcome Obstacles:** Use dexterity and logic to activate machines at the right time, creating a path to the finish.
 
 ---
 
-## 🗺️ Các Màn Chơi
+## 🎭 8 Types of Troll Traps
 
-### Level 1: FIRST TOCK (Giới Thiệu)
-- **Mục đích:** Giới thiệu 4 loại bẫy cơ bản + ALMOST_MOMENT
-- **Bẫy:** Fake Safe Zone, Troll Token (RUSH_BAIT), Hidden Kill Gear, Bait Path
-- **Độ khó:** Nhẹ nhàng, dạy người chơi không tin vào vẻ ngoài
+### 1. **Trigger Tiles (Hidden Activation Tiles)**
+- **How it works:** Invisible floor tiles that trigger obstacles when stepped on.
+- **Sound:** An "activate" sound when the trap is triggered.
+- **Death Taunts:** "YOU TRIGGERED THAT.", "WATCH YOUR STEP."
 
-### Level 2: THE CAROUSEL (Lừa Dối Mẫu Hình)
-- **Mục đích:** Thêm Mirror Corridor
-- **Bẫy:** Tất cả bẫy Level 1 + Mirror Corridor với orbit spheres
-- **Độ khó:** Khai thác khả năng nhận dạng mẫu hình của người chơi
+### 2. **FAKE_SAFE_ZONE**
+- **How it works:** Areas that look safe, but obstacles will rush in after 1-2 seconds.
+- **Characteristics:** Looks identical to a real safe zone.
+- **Death Taunts:** "THAT WASN'T SAFE.", "NOWHERE IS SAFE.", "THE SAFE ZONE LIED."
 
-### Level 3: THE SENTINEL (Độ Khó Động)
-- **Mục đích:** Thêm Phase Shift Obstacle
-- **Bẫy:** Tất cả bẫy Level 2 + Pendulum tăng tốc theo số lần chết
-- **Độ khó:** Người chơi phải thích nghi với tốc độ thay đổi
+### 3. **TROLL_TOKEN (Trap Gears)**
+There are 3 sub-types:
 
-### Level 4: THE CLOCK TOWER (Troll Dọc)
-- **Mục đích:** Bẫy trong môi trường có trọng lực và leo trèo
-- **Bẫy:** Tất cả bẫy Level 3 trong bố cục dọc
-- **Độ khó:** Bẫy khai thác sự tập trung của người chơi vào việc leo
+#### a) ONE_WAY_PRISON
+- **How it works:** When you pick up the gear, obstacles block the way back.
+- **Effect:** You are trapped and cannot turn back.
 
-### Level 5: HEART OF THE MACHINE (Thử Thách Tối Thượng)
-- **Mục đích:** Tất cả 8 loại bẫy kết hợp
-- **Bẫy:** Bao gồm One Frame Window, nhiều Phase Shift, nhiều Mirror Corridor
-- **Độ khó:** Cần thành thạo tất cả bài học trước đó
-- **Đặc biệt:** Puzzle chuỗi với nhiều bẫy gây nhiễu tư duy
+#### b) RUSH_BAIT
+- **How it works:** Picking up the gear increases obstacle speed by 30-40%.
+- **Effect:** Everything suddenly moves faster.
+
+#### c) WIND_TRAP (Spawn Trap)
+- **How it works:** Picking up the gear spawns additional obstacles near you.
+- **Effect:** Balls or dangerous objects appear unexpectedly.
+
+**General Taunts:** "GREED KILLS.", "SHOULD'VE LEFT IT.", "THAT WAS A TRAP. OBVIOUSLY."
+
+**Special UI:** Liar Counter - Displays the incorrect gear count for 0.5 seconds.
+
+### 4. **HIDDEN_KILL_GEAR**
+- **How it works:** Among many decorative gears, there is one with a lethal hitbox.
+- **Sound:** A low "hum" when nearby (gets louder as you get closer).
+- **Characteristics:** Looks identical to normal decorative gears.
+- **Death Taunts:** "THAT ONE WAS REAL.", "NOT ALL GEARS ARE DECORATIVE.", "TRUST NOTHING."
+
+### 5. **BAIT_PATH**
+- **How it works:** Wide paths look easy to navigate but have MORE obstacles than narrow paths.
+- **Psychology:** Players often choose the wide path thinking it's safer.
+- **Death Taunts:** "THE EASY PATH IS NEVER EASY.", "WIDE ROADS, NARROW CHANCES."
+
+### 6. **ONE_FRAME_WINDOW**
+- **How it works:** The gap between pistons/pendulums is only 0.1 seconds or less.
+- **Characteristics:** Passable but requires extremely precise timing.
+- **Appearance:** Primarily in Level 5 (HEART OF THE MACHINE).
+
+### 7. **PHASE_SHIFT_OBSTACLE**
+- **How it works:** Speed increases by 10% after every 3 deaths.
+- **Characteristics:** Changes are very subtle and hard to notice.
+- **Reset:** Speed returns to normal when the level is reloaded.
+- **Appearance:** Levels 3, 4, 5.
+
+### 8. **ALMOST_MOMENT**
+- **How it works:** When the final gear is collected, obstacles block the exit.
+- **Sound:** A fake "buzz" from the exit door.
+- **Psychology:** Creates tension at the moment of victory.
+- **Death Taunts:** "SO CLOSE.", "VICTORY WAS RIGHT THERE.", "ALMOST DOESN'T COUNT."
+
+### 9. **MIRROR_CORRIDOR**
+- **How it works:** Two obstacles look symmetrical but have a phase offset.
+- **Characteristics:** Movements look the same but timing is different.
+- **Psychology:** Players think they are synchronized and miscalculate.
+- **Appearance:** Levels 2, 3, 4, 5.
 
 ---
 
-## � Hệ Thống Âm Thanh
+## 🗺️ Levels
 
-Game sử dụng âm thanh để cung cấp manh mối tinh tế:
+### Level 1: FIRST TOCK (Introduction)
+- **Purpose:** Introduce 4 basic trap types + ALMOST_MOMENT.
+- **Traps:** Fake Safe Zone, Troll Token (RUSH_BAIT), Hidden Kill Gear, Bait Path.
+- **Difficulty:** Gentle, teaches players not to trust appearances.
 
-- **Piston Clunk:** Tiếng "clunk" khi piston di chuyển (giúp đếm timing)
-- **Hidden Gear Hum:** Tiếng "hum" nhỏ khi gần bánh răng giết người (âm lượng tăng khi đến gần)
-- **Trigger Activate:** Tiếng "activate" khi bẫy được kích hoạt
-- **Fake Exit Buzz:** Tiếng "buzz" giả khi Almost Moment kích hoạt
+### Level 2: THE CAROUSEL (Pattern Deception)
+- **Purpose:** Add Mirror Corridor.
+- **Traps:** All Level 1 traps + Mirror Corridor with orbit spheres.
+- **Difficulty:** Exploits the player's pattern recognition.
 
-**Lưu ý:** Âm thanh là manh mối quan trọng. Hãy bật âm thanh khi chơi!
+### Level 3: THE SENTINEL (Dynamic Difficulty)
+- **Purpose:** Add Phase Shift Obstacle.
+- **Traps:** All Level 2 traps + Pendulum that speeds up based on death count.
+- **Difficulty:** Players must adapt to changing speeds.
+
+### Level 4: THE CLOCK TOWER (Vertical Troll)
+- **Purpose:** Traps in a gravity and climbing environment.
+- **Traps:** All Level 3 traps in a vertical layout.
+- **Difficulty:** Traps exploit the player's focus on climbing.
+
+### Level 5: HEART OF THE MACHINE (The Ultimate Challenge)
+- **Purpose:** All 8 trap types combined.
+- **Traps:** Includes One Frame Window, multiple Phase Shifts, multiple Mirror Corridors.
+- **Difficulty:** Requires mastery of all previous lessons.
+- **Special:** Sequence puzzle with multiple traps to confuse thinking.
 
 ---
 
-## 💀 Hệ Thống Chết & Lời Chế Giễu
+## 🔊 Audio System
 
-Mỗi loại bẫy có bộ lời chế giễu riêng khi bạn chết:
+The game uses sound to provide subtle clues:
+
+- **Piston Clunk:** A "clunk" sound when a piston moves (helps with timing).
+- **Hidden Gear Hum:** A low "hum" when near a lethal gear (volume increases as you get closer).
+- **Trigger Activate:** An "activate" sound when a trap is triggered.
+- **Fake Exit Buzz:** A fake "buzz" when Almost Moment activates.
+
+**Note:** Audio is a crucial clue. Keep your sound on while playing!
+
+---
+
+## 💀 Death System & Taunts
+
+Each trap type has its own set of taunts when you die:
 
 - **Fake Safe Zone:** "THAT WASN'T SAFE.", "NOWHERE IS SAFE."
 - **Troll Token:** "GREED KILLS.", "SHOULD'VE LEFT IT."
@@ -279,135 +279,135 @@ Mỗi loại bẫy có bộ lời chế giễu riêng khi bạn chết:
 - **Bait Path:** "THE EASY PATH IS NEVER EASY.", "YOU CHOSE POORLY."
 - **Almost Moment:** "SO CLOSE.", "VICTORY WAS RIGHT THERE."
 
-Lời chế giễu giúp bạn hiểu **TẠI SAO** bạn chết, nhưng chỉ sau khi đã chết!
+Taunts help you understand **WHY** you died, but only after you've died!
 
 ---
 
-## 🧪 Kiểm Thử & Tính Đúng Đắn
+## 🧪 Testing & Correctness
 
-Game được phát triển với phương pháp **Property-Based Testing** để đảm bảo tính đúng đắn:
+The game is developed with **Property-Based Testing** to ensure correctness:
 
-### Chạy Tests
+### Running Tests
 ```bash
 npm test
 ```
 
-### Các Property Được Kiểm Tra
+### Properties Tested
 
-1. **Trigger Tile Collision Detection** - Phát hiện va chạm chính xác
-2. **Fake Safe Zone Timing** - Độ trễ kích hoạt đúng thời gian
-3. **Obstacle Behavior Preservation** - Chướng ngại vật giữ nguyên hành vi
-4. **Troll Token Trap Activation** - Kích hoạt bẫy đúng loại
-5. **Hidden Kill Gear Collision** - Va chạm và gây chết chính xác
-6. **Distance-Based Volume** - Âm lượng tính theo khoảng cách
-7. **Bait Path Obstacle Density** - Đường rộng có nhiều chướng ngại vật hơn
-8. **One Frame Window Synchronization** - Đồng bộ timing chính xác
-9. **Phase Shift Speed Calculation** - Tính tốc độ tăng đúng công thức
-10. **Phase Shift Reset** - Reset tốc độ khi reload
-11. **Almost Moment Activation** - Kích hoạt khi nhặt bánh răng cuối
-12. **Mirror Corridor Symmetry** - Đối xứng vị trí chính xác
-13. **Mirror Corridor Phase Offset** - Độ lệch pha đúng giá trị
-14. **Trap-Specific Taunt Selection** - Chọn lời chế giễu đúng loại bẫy
-15. **Liar Counter Timer** - Đếm ngược 0.5 giây chính xác
-16. **Liar Counter Lie Calculation** - Hiển thị số sai ±1
-17. **Proximity Trigger Activation** - Kích hoạt theo khoảng cách
+1. **Trigger Tile Collision Detection** - Accurate collision detection.
+2. **Fake Safe Zone Timing** - Correct activation delay.
+3. **Obstacle Behavior Preservation** - Obstacles maintain behavior.
+4. **Troll Token Trap Activation** - Activates the correct trap type.
+5. **Hidden Kill Gear Collision** - Accurate collision and lethality.
+6. **Distance-Based Volume** - Volume calculated by distance.
+7. **Bait Path Obstacle Density** - Wide paths have more obstacles.
+8. **One Frame Window Synchronization** - Accurate timing synchronization.
+9. **Phase Shift Speed Calculation** - Speed increases according to formula.
+10. **Phase Shift Reset** - Speed resets on reload.
+11. **Almost Moment Activation** - Activates when the last gear is collected.
+12. **Mirror Corridor Symmetry** - Accurate position symmetry.
+13. **Mirror Corridor Phase Offset** - Correct phase offset values.
+14. **Trap-Specific Taunt Selection** - Selects the correct taunt for the trap type.
+15. **Liar Counter Timer** - Accurate 0.5-second countdown.
+16. **Liar Counter Lie Calculation** - Displays incorrect count by ±1.
+17. **Proximity Trigger Activation** - Activates based on distance.
 
-**Tổng cộng:** 266 tests đảm bảo game hoạt động đúng!
+**Total:** 266 tests ensure the game works correctly!
 
 ---
 
-## 📁 Cấu Trúc Thư Mục
+## 📁 Directory Structure
 
 ```
 broken-clockwork/
-├── index.html              # Điểm bắt đầu
+├── index.html              # Entry point
 ├── css/
-│   └── style.css          # Giao diện
+│   └── style.css          # Stylesheet
 ├── js/
-│   ├── main.js            # Vòng lặp game chính
-│   ├── input.js           # Xử lý bàn phím
-│   ├── constants.js       # Cấu hình game
-│   ├── player.js          # Logic nhân vật
-│   ├── physics.js         # Vật lý (trọng lực, va chạm)
-│   ├── draw.js            # Render đồ họa
-│   ├── ui.js              # Giao diện người dùng
-│   ├── audio.js           # Hệ thống âm thanh
-│   ├── levels.js          # Cấu hình 5 màn chơi
-│   ├── deathSystem.js     # Hệ thống chết & lời chế giễu
-│   ├── trapSystem.js      # 8 loại bẫy troll
-│   ├── liarCounter.js     # UI đếm bánh răng nói dối
-│   ├── PhaseShiftObstacle.js    # Chướng ngại vật tăng tốc
-│   ├── AutonomousObstacle.js    # Chướng ngại vật tự động
-│   ├── WindableObject.js        # Vật thể lên dây cót
-│   └── *.test.js          # Các file test
+│   ├── main.js            # Main game loop
+│   ├── input.js           # Keyboard handling
+│   ├── constants.js       # Game configuration
+│   ├── player.js          # Player logic
+│   ├── physics.js         # Physics (gravity, collision)
+│   ├── draw.js            # Graphic rendering
+│   ├── ui.js              # User interface
+│   ├── audio.js           # Audio system
+│   ├── levels.js          # Configuration for 5 levels
+│   ├── deathSystem.js     # Death & taunt system
+│   ├── trapSystem.js      # 8 types of troll traps
+│   ├── liarCounter.js     # Liar Gear Counter UI
+│   ├── PhaseShiftObstacle.js    # Speeding-up obstacle
+│   ├── AutonomousObstacle.js    # Automated obstacle
+│   ├── WindableObject.js        # Wind-up object
+│   └── *.test.js          # Test files
 ├── .kiro/
 │   └── specs/
-│       └── troll-level-redesign/  # Tài liệu thiết kế
-│           ├── requirements.md     # Yêu cầu tính năng
-│           ├── design.md          # Thiết kế chi tiết
-│           └── tasks.md           # Kế hoạch triển khai
+│       └── troll-level-redesign/  # Design documentation
+│           ├── requirements.md     # Feature requirements
+│           ├── design.md          # Detailed design
+│           └── tasks.md           # Implementation plan
 └── package.json           # Dependencies & scripts
 ```
 
 ---
 
-## 🎓 Mẹo Chơi Game
+## 🎓 Pro Tips
 
-1. **Không tin vào vẻ ngoài:** Khu vực trông an toàn có thể là bẫy
-2. **Lắng nghe âm thanh:** Tiếng "hum" cảnh báo bánh răng nguy hiểm
-3. **Đường hẹp có thể an toàn hơn:** Đừng luôn chọn đường rộng
-4. **Đếm số lần chết:** Sau mỗi 3 lần chết, chướng ngại vật có thể nhanh hơn
-5. **Quan sát kỹ sau khi chết:** Lời chế giễu và replay giúp bạn hiểu bẫy
-6. **Cẩn thận với bánh răng cuối:** Có thể kích hoạt bẫy Almost Moment
-7. **Đối xứng không có nghĩa là đồng bộ:** Mirror Corridor có độ lệch pha
-8. **Bánh răng trang trí có thể giết bạn:** Nghe tiếng "hum" để phát hiện
+1. **Don't trust appearances:** Areas that look safe might be traps.
+2. **Listen to the audio:** The "hum" warns of dangerous gears.
+3. **Narrow paths might be safer:** Don't always choose the wide path.
+4. **Count your deaths:** After every 3 deaths, obstacles might get faster.
+5. **Observe carefully after death:** Taunts and replays help you understand traps.
+6. **Watch out for the last gear:** It might trigger the Almost Moment trap.
+7. **Symmetry doesn't mean synchronization:** Mirror Corridors have a phase offset.
+8. **Decorative gears can kill you:** Listen for the "hum" to detect them.
 
 ---
 
-## 🛠️ Phát Triển & Đóng Góp
+## 🛠️ Development & Contributing
 
-### Cài Đặt Dependencies
+### Install Dependencies
 ```bash
 npm install
 ```
 
-### Chạy Tests
+### Running Tests
 ```bash
-npm test              # Chạy tất cả tests
-npm test -- --watch   # Chạy tests ở chế độ watch
+npm test              # Run all tests
+npm test -- --watch   # Run tests in watch mode
 ```
 
-### Cấu Trúc Test
-- **Unit Tests:** Kiểm tra từng component riêng lẻ
-- **Integration Tests:** Kiểm tra tương tác giữa các hệ thống
-- **Property-Based Tests:** Kiểm tra tính đúng đắn với 100+ test cases ngẫu nhiên
+### Test Structure
+- **Unit Tests:** Test individual components.
+- **Integration Tests:** Test interactions between systems.
+- **Property-Based Tests:** Test correctness with 100+ random test cases.
 
-### Thêm Màn Chơi Mới
-1. Mở `js/levels.js`
-2. Thêm cấu hình màn mới với các bẫy
-3. Tham khảo Level 1-5 để biết cấu trúc
-4. Viết integration test trong `js/levelX.integration.test.js`
+### Adding New Levels
+1. Open `js/levels.js`.
+2. Add a new level configuration with traps.
+3. Refer to Levels 1-5 for structure.
+4. Write integration tests in `js/levelX.integration.test.js`.
 
-### Thêm Loại Bẫy Mới
-1. Thêm class mới vào `js/trapSystem.js`
-2. Thêm property test để kiểm tra tính đúng đắn
-3. Thêm lời chế giễu vào `js/deathSystem.js`
-4. Thêm âm thanh (nếu cần) vào `js/audio.js`
-5. Cập nhật tài liệu trong README
-
----
-
-## 📚 Tài Liệu Thiết Kế
-
-Chi tiết về thiết kế và triển khai có trong thư mục `.kiro/specs/troll-level-redesign/`:
-
-- **requirements.md:** 20 yêu cầu chức năng với acceptance criteria
-- **design.md:** Kiến trúc hệ thống, data models, 17 correctness properties
-- **tasks.md:** 25 tasks triển khai (đã hoàn thành 100%)
+### Adding New Trap Types
+1. Add a new class to `js/trapSystem.js`.
+2. Add property tests to verify correctness.
+3. Add taunts to `js/deathSystem.js`.
+4. Add audio (if needed) to `js/audio.js`.
+5. Update documentation in the README.
 
 ---
 
-## 🏆 Thành Tựu
+## 📚 Design Documentation
+
+Details on design and implementation can be found in the `.kiro/specs/troll-level-redesign/` directory:
+
+- **requirements.md:** 20 functional requirements with acceptance criteria.
+- **design.md:** System architecture, data models, 17 correctness properties.
+- **tasks.md:** 25 implementation tasks (100% complete).
+
+---
+
+## 🏆 Achievements
 
 - ✅ 266 tests passed
 - ✅ 17 correctness properties validated
@@ -420,6 +420,6 @@ Chi tiết về thiết kế và triển khai có trong thư mục `.kiro/specs/
 
 ---
 
-Chúc bạn có những giây phút trải nghiệm thú vị (và bực bội) với **BROKEN CLOCKWORK**! 🕰️✨
+Enjoy your (potentially frustrating) experience with **BROKEN CLOCKWORK**! 🕰️✨
 
 *"The trap must be VISIBLE in hindsight. Player dies and immediately understands why — but never saw it coming the first time."*
